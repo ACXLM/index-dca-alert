@@ -101,6 +101,7 @@ config/
 
 docs/
   README.md               Documentation map and rules.
+  app-foundation/         Python package, project metadata, and config loading.
   runtime/                Scheduling, GitHub Actions, market runs.
   storage/                SQLite schema and persistence rules.
   data-providers/         Provider assumptions and backfill design.
@@ -131,15 +132,17 @@ Install `uv` first if it is not already available:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Once project packaging is added, install dependencies with:
+Install dependencies with:
 
 ```bash
 uv sync
 ```
 
-For the current scaffold, dependency migration is still pending. See
-[docs/runtime/todo.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/runtime/todo.md)
-and [docs/mvp-release/todo.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/todo.md).
+Run the foundation test suite with:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests
+```
 
 ## Configuration
 
@@ -183,6 +186,7 @@ the intended shape and still needs to be finalized for `uv`.
 Tests are documented next to each feature:
 
 - [docs/runtime/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/runtime/test.md)
+- [docs/app-foundation/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/app-foundation/test.md)
 - [docs/storage/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/storage/test.md)
 - [docs/data-providers/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/data-providers/test.md)
 - [docs/valuation-signals/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/valuation-signals/test.md)
@@ -222,4 +226,3 @@ test: cover percentile boundary rules
 ## License
 
 No license has been selected yet.
-

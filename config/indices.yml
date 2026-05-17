@@ -1,6 +1,7 @@
 indices:
   - code: "000300"
     name: "沪深300"
+    enabled: true
     market: "CN"
     category: "cn_broad"
     currency: "CNY"
@@ -10,6 +11,7 @@ indices:
 
   - code: "000905"
     name: "中证500"
+    enabled: true
     market: "CN"
     category: "cn_broad"
     currency: "CNY"
@@ -19,6 +21,7 @@ indices:
 
   - code: "HSI"
     name: "恒生指数"
+    enabled: true
     market: "HK"
     category: "hk_broad"
     currency: "HKD"
@@ -28,6 +31,7 @@ indices:
 
   - code: "HSTECH"
     name: "恒生科技指数"
+    enabled: true
     market: "HK"
     category: "hk_growth_broad"
     currency: "HKD"
@@ -37,6 +41,7 @@ indices:
 
   - code: "SPX"
     name: "S&P 500"
+    enabled: true
     market: "US"
     category: "us_broad"
     currency: "USD"
@@ -46,10 +51,10 @@ indices:
 
   - code: "NDX"
     name: "Nasdaq 100"
+    enabled: true
     market: "US"
     category: "us_growth_broad"
     currency: "USD"
     timezone: "America/New_York"
     primary_provider: "us_index_adapter"
     source_symbol: "^NDX"
-

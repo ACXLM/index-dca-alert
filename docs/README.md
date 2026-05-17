@@ -20,6 +20,8 @@ docs/<feature>/
 
 ## Current Features
 
+- `app-foundation/`: Python package structure, project metadata, configuration
+  loading, and configuration validation.
 - `runtime/`: scheduling, GitHub Actions, CLI jobs, and idempotent market runs.
 - `storage/`: SQLite schema, UUID strategy, repository boundaries, and
   persistence rules.
@@ -39,4 +41,3 @@ docs/<feature>/
   boundary.
 - Do not create global type-based folders such as `tests/`, `todos/`, or
   `plans/` unless a future need clearly spans all features.
-
