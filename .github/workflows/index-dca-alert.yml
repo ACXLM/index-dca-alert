@@ -1,0 +1,34 @@
+name: index-dca-alert
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 8 * * 1-5"
+    - cron: "30 10 * * 1-5"
+    - cron: "30 20 * * 1-5"
+    - cron: "30 21 * * 1-5"
+    - cron: "30 22 * * 1-5"
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m app.jobs.daily_run
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      - name: Commit SQLite state
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add data/index_dca.sqlite
+          git commit -m "update valuation data" || echo "No data changes"
+          git push
+
