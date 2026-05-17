@@ -1,0 +1,55 @@
+lookback_years: 5
+minimum_observations: 500
+base_amount: 1000
+
+metric_weights:
+  cn_broad:
+    pe: 0.6
+    pb: 0.4
+
+  hk_broad:
+    pe: 0.45
+    pb: 0.30
+    dividend_yield_inverse: 0.25
+
+  hk_growth_broad:
+    pe: 0.45
+    pb: 0.25
+    price: 0.30
+
+  us_broad:
+    pe: 0.55
+    cape: 0.30
+    price: 0.15
+
+  us_growth_broad:
+    pe: 0.55
+    price: 0.30
+    pb: 0.15
+
+zone_rules:
+  - min: 0
+    max: 15
+    zone: "明显低估"
+    dca_ratio: 2.0
+
+  - min: 15
+    max: 30
+    zone: "合理偏低"
+    dca_ratio: 1.2
+
+  - min: 30
+    max: 60
+    zone: "合理"
+    dca_ratio: 1.0
+
+  - min: 60
+    max: 80
+    zone: "合理偏高"
+    dca_ratio: 0.5
+
+  - min: 80
+    max: 100
+    zone: "高估"
+    dca_ratio: 0.0
+
