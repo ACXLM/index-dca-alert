@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from app.config import IndexConfig
@@ -58,7 +58,7 @@ def normalize_akshare_csindex_rows(
                 ProviderRowIssue(
                     event_type="normalization_error",
                     message=str(exc),
-                    raw_json=dict(raw_row),
+                    raw_json=_json_safe_raw_row(raw_row),
                 )
             )
             continue
@@ -89,7 +89,7 @@ def _normalize_row(raw_row: dict[str, Any]) -> ProviderValuation:
             source=SOURCE,
             source_type=SOURCE_TYPE,
             metric_schema_version=METRIC_SCHEMA_VERSION,
-            raw_json=dict(raw_row),
+            raw_json=_json_safe_raw_row(raw_row),
         )
 
     return ProviderValuation(
@@ -101,7 +101,7 @@ def _normalize_row(raw_row: dict[str, Any]) -> ProviderValuation:
         source=SOURCE,
         source_type=SOURCE_TYPE,
         metric_schema_version=METRIC_SCHEMA_VERSION,
-        raw_json=dict(raw_row),
+        raw_json=_json_safe_raw_row(raw_row),
     )
 
 
@@ -154,3 +154,22 @@ def _first_present(raw_row: dict[str, Any], aliases: list[str]) -> Any | None:
         if alias in raw_row:
             return raw_row[alias]
     return None
+
+
+def _json_safe_raw_row(raw_row: dict[str, Any]) -> dict[str, Any]:
+    return {str(key): _json_safe_value(value) for key, value in raw_row.items()}
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        try:
+            return _json_safe_value(value.item())
+        except (TypeError, ValueError):
+            pass
+    if isinstance(value, float) and value != value:
+        return None
+    return value

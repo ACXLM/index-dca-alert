@@ -519,4 +519,4 @@ def _normalize_raw_json(raw_json: str | dict[str, Any] | None) -> str | None:
         return None
     if isinstance(raw_json, str):
         return raw_json
-    return json.dumps(raw_json, ensure_ascii=False, sort_keys=True)
+    return json.dumps(raw_json, ensure_ascii=False, sort_keys=True, default=str)

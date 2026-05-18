@@ -46,6 +46,34 @@ def test_akshare_csi_normalization_maps_fixture_fields() -> None:
     assert valuation.metric_schema_version == METRIC_SCHEMA_VERSION
 
 
+def test_akshare_raw_json_is_safe_when_trade_date_is_date_object(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+    provider = AkshareCsindexProvider(
+        client=_AkshareClient(
+            [
+                {
+                    "日期": date(2026, 5, 15),
+                    "市盈率": "12.5",
+                    "市净率": "1.4",
+                }
+            ]
+        )
+    )
+
+    run_backfill(
+        db_path=db_path,
+        app_config=_app_config(indices=[_index("000300")]),
+        providers={"akshare_csindex": provider},
+        today=date(2026, 5, 17),
+    )
+
+    with connect(db_path) as conn:
+        row = conn.execute("SELECT trade_date, raw_json FROM index_valuations").fetchone()
+
+    assert row["trade_date"] == "2026-05-15"
+    assert '"日期": "2026-05-15"' in row["raw_json"]
+
+
 def test_missing_optional_fields_are_none_not_zero() -> None:
     result = normalize_akshare_csindex_rows(
         [{"日期": "2026-05-15", "市盈率": "12.5", "市净率": "", "股息率": "-", "收盘": "--"}],
@@ -305,6 +333,14 @@ class _FixtureProvider:
     def fetch_history(self, index: IndexConfig, start_date: str, end_date: str) -> ProviderResult:
         self.calls.append((index.code, start_date, end_date))
         return self.result
+
+
+class _AkshareClient:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+
+    def stock_zh_index_value_csindex(self, symbol: str) -> list[dict]:
+        return self.rows
 
 
 class _FailingProvider:
