@@ -259,6 +259,17 @@ class ValuationRepository:
             )
         )
 
+    def latest_for_index_on_or_before(self, index_id: str, trade_date: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT * FROM index_valuations
+            WHERE index_id = ? AND trade_date <= ?
+            ORDER BY trade_date DESC, updated_at DESC
+            LIMIT 1
+            """,
+            (index_id, trade_date),
+        ).fetchone()
+
 
 class MarketRunRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -378,6 +389,62 @@ class UserSubscriptionRepository:
                 (index_id,),
             )
         )
+
+    def get_by_identity(
+        self,
+        *,
+        user_id: str,
+        index_id: str,
+        notify_channel: str,
+        notify_target: str,
+    ) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT * FROM user_subscriptions
+            WHERE user_id = ?
+              AND index_id = ?
+              AND notify_channel = ?
+              AND notify_target = ?
+            ORDER BY created_at ASC
+            LIMIT 1
+            """,
+            (user_id, index_id, notify_channel, notify_target),
+        ).fetchone()
+
+    def get_or_create_default(
+        self,
+        *,
+        index_id: str,
+        notify_target: str,
+        base_amount: float,
+        user_id: str = "default",
+        notify_channel: str = "telegram",
+    ) -> sqlite3.Row:
+        row = self.get_by_identity(
+            user_id=user_id,
+            index_id=index_id,
+            notify_channel=notify_channel,
+            notify_target=notify_target,
+        )
+        if row is None:
+            self.create(
+                UserSubscriptionInput(
+                    user_id=user_id,
+                    index_id=index_id,
+                    base_amount=base_amount,
+                    notify_channel=notify_channel,
+                    notify_target=notify_target,
+                )
+            )
+            row = self.get_by_identity(
+                user_id=user_id,
+                index_id=index_id,
+                notify_channel=notify_channel,
+                notify_target=notify_target,
+            )
+        if row is None:
+            raise RuntimeError("subscription create completed but row was not found")
+        return row
 
 
 class SignalRepository:

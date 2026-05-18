@@ -16,11 +16,12 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r requirements.txt
-      - run: python -m app.jobs.daily_run
+      - run: uv sync --frozen
+      - run: uv run python -m app.jobs.daily_run
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
@@ -29,6 +30,9 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add data/index_dca.sqlite
-          git commit -m "update valuation data" || echo "No data changes"
-          git push
-
+          if git diff --cached --quiet; then
+            echo "No data changes"
+          else
+            git commit -m "chore: update valuation data"
+            git push
+          fi
