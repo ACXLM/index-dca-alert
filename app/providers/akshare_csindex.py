@@ -36,34 +36,17 @@ class AkshareCsindexProvider:
         end_date: str,
     ) -> ProviderResult:
         client = self.client or _load_akshare()
-        csindex_result: ProviderResult | None = None
-        csindex_error: ProviderError | None = None
-        try:
-            csindex_result = normalize_akshare_csindex_rows(
-                self._fetch_rows(index, client),
-                start_date=start_date,
-                end_date=end_date,
-            )
-        except ProviderError as exc:
-            csindex_error = exc
-
         if index.code in LEGULEGU_SYMBOLS:
-            try:
-                legulegu_result = self._fetch_legulegu_history(index, client, start_date, end_date)
-            except ProviderError as exc:
-                if csindex_result is not None:
-                    return _with_issue(csindex_result, exc)
-                raise csindex_error or exc from exc
+            legulegu_result = self._fetch_legulegu_history(index, client, start_date, end_date)
             if _has_requested_coverage(legulegu_result, start_date):
                 return legulegu_result
-            if csindex_result is None:
-                return legulegu_result
+            raise _insufficient_history_error(index, legulegu_result, start_date)
 
-        if csindex_result is not None:
-            return csindex_result
-        if csindex_error is not None:
-            raise csindex_error
-        raise ProviderError(SOURCE, index.source_symbol, "provider returned no result")
+        return normalize_akshare_csindex_rows(
+            self._fetch_rows(index, client),
+            start_date=start_date,
+            end_date=end_date,
+        )
 
     def _fetch_rows(self, index: IndexConfig, client: Any) -> Iterable[dict[str, Any]]:
         try:
@@ -221,16 +204,19 @@ def _has_requested_coverage(result: ProviderResult, start_date: str) -> bool:
     return min(valuation.trade_date for valuation in result.valuations) <= start_date
 
 
-def _with_issue(result: ProviderResult, error: ProviderError) -> ProviderResult:
-    return ProviderResult(
-        valuations=result.valuations,
-        issues=[
-            *result.issues,
-            ProviderRowIssue(
-                event_type="provider_failure",
-                message=str(error),
-            ),
-        ],
+def _insufficient_history_error(
+    index: IndexConfig,
+    result: ProviderResult,
+    start_date: str,
+) -> ProviderError:
+    earliest = min((valuation.trade_date for valuation in result.valuations), default="none")
+    return ProviderError(
+        LEGULEGU_SOURCE,
+        LEGULEGU_SYMBOLS[index.code],
+        (
+            "insufficient valuation history coverage: "
+            f"earliest={earliest}, required_start<={start_date}"
+        ),
     )
 
 

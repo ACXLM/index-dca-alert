@@ -65,7 +65,7 @@ def test_akshare_raw_json_is_safe_when_trade_date_is_date_object(tmp_path: Path)
 
     run_backfill(
         db_path=db_path,
-        app_config=_app_config(indices=[_index("000300")]),
+        app_config=_app_config(indices=[_index("H30374")]),
         providers={"akshare_csindex": provider},
         today=date(2026, 5, 17),
     )
@@ -101,7 +101,7 @@ def test_legulegu_normalization_merges_pe_pb_for_5_year_history() -> None:
     assert result.valuations[0].metric_schema_version == LEGULEGU_METRIC_SCHEMA_VERSION
 
 
-def test_akshare_provider_prefers_legulegu_when_csindex_is_recent_only() -> None:
+def test_cn_akshare_provider_uses_legulegu_history_not_recent_csindex_rows() -> None:
     provider = AkshareCsindexProvider(client=_AkshareClientWithLegulegu())
 
     result = provider.fetch_history(_index("000300"), "2021-05-17", "2026-05-17")
@@ -109,6 +109,34 @@ def test_akshare_provider_prefers_legulegu_when_csindex_is_recent_only() -> None
     assert len(result.valuations) == 2
     assert result.valuations[0].trade_date == "2021-05-17"
     assert {valuation.source for valuation in result.valuations} == {LEGULEGU_SOURCE}
+
+
+def test_cn_akshare_provider_rejects_recent_only_history() -> None:
+    provider = AkshareCsindexProvider(client=_RecentOnlyAkshareClient())
+
+    with pytest.raises(ProviderError, match="insufficient valuation history coverage"):
+        provider.fetch_history(_index("000300"), "2021-05-17", "2026-05-17")
+
+
+def test_backfill_does_not_write_recent_only_cn_history(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+
+    result = run_backfill(
+        db_path=db_path,
+        app_config=_app_config(indices=[_index("000300")]),
+        providers={"akshare_csindex": AkshareCsindexProvider(client=_RecentOnlyAkshareClient())},
+        years=5,
+        today=date(2026, 5, 17),
+    )
+
+    with connect(db_path) as conn:
+        valuation_count = conn.execute("SELECT COUNT(*) AS count FROM index_valuations").fetchone()["count"]
+        event = conn.execute("SELECT * FROM data_quality_events").fetchone()
+
+    assert result.inserted_or_updated_rows == 0
+    assert valuation_count == 0
+    assert event["event_type"] == "provider_failure"
+    assert "insufficient valuation history coverage" in event["message"]
 
 
 def test_backfill_writes_5_year_legulegu_history_when_csindex_is_recent_only(tmp_path: Path) -> None:
@@ -168,12 +196,15 @@ def test_invalid_rows_are_reported_without_valid_valuations() -> None:
 
 def test_provider_failures_raise_provider_error() -> None:
     class BrokenClient:
-        def stock_zh_index_value_csindex(self, symbol: str) -> object:
+        def stock_index_pe_lg(self, symbol: str) -> object:
+            raise RuntimeError(f"boom {symbol}")
+
+        def stock_index_pb_lg(self, symbol: str) -> object:
             raise RuntimeError(f"boom {symbol}")
 
     provider = AkshareCsindexProvider(client=BrokenClient())
 
-    with pytest.raises(ProviderError, match="boom 000300"):
+    with pytest.raises(ProviderError, match="boom 沪深300"):
         provider.fetch_history(_index("000300"), "2026-01-01", "2026-12-31")
 
 
@@ -423,6 +454,27 @@ class _AkshareClientWithLegulegu:
     def stock_index_pb_lg(self, symbol: str) -> list[dict]:
         return [
             {"日期": date(2021, 5, 17), "市净率": 1.5},
+            {"日期": date(2026, 5, 15), "市净率": 1.3},
+        ]
+
+
+class _RecentOnlyAkshareClient:
+    def stock_zh_index_value_csindex(self, symbol: str) -> list[dict]:
+        return [
+            {
+                "日期": date(2026, 5, 15),
+                "市盈率": "12.5",
+                "市净率": "1.4",
+            }
+        ]
+
+    def stock_index_pe_lg(self, symbol: str) -> list[dict]:
+        return [
+            {"日期": date(2026, 5, 15), "滚动市盈率": 12.5, "指数": 3900},
+        ]
+
+    def stock_index_pb_lg(self, symbol: str) -> list[dict]:
+        return [
             {"日期": date(2026, 5, 15), "市净率": 1.3},
         ]
 

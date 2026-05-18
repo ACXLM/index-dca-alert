@@ -5,7 +5,8 @@
 - [x] Define `ProviderError` for source and normalization failures.
 - [x] Implement AKShare provider for CSI 300 and CSI 500.
 - [x] Prefer AKShare Legulegu PE/PB history for China 5-year backfill.
-- [x] Keep AKShare CSI valuation files as recent-window fallback data.
+- [x] Reject recent-only China valuation data instead of using it for signals.
+- [x] Keep AKShare CSI valuation files out of China DCA signal fallback paths.
 - [x] Normalize AKShare CSI fixture rows into canonical valuation fields.
 - [x] Normalize AKShare Legulegu PE/PB rows into canonical valuation fields.
 - [x] Validate provider rows and skip invalid rows without producing

@@ -6,8 +6,10 @@
   fields.
 - AKShare CSI rows preserve metric schema interpretation.
 - AKShare Legulegu PE/PB rows merge into canonical 5-year valuation rows.
-- China index provider prefers Legulegu PE/PB history when CSI valuation files
-  only contain recent-window rows.
+- China index provider uses Legulegu PE/PB history instead of recent-window CSI
+  valuation files.
+- China index provider raises a provider failure when only recent-window
+  history is available.
 - ETF proxy rows preserve `source_type = etf_proxy`.
 - Missing optional fields are represented as missing data, not zero values.
 - Invalid rows with missing `trade_date` or no positive metric/close are not
@@ -30,6 +32,7 @@
   arguments deterministically.
 - Backfill writes the configured 5-year China index history from Legulegu even
   when CSI valuation files only contain recent-window rows.
+- Backfill does not persist recent-only China valuation rows as usable history.
 - Backfill does not call signal calculation or notification code.
 - One index provider failure does not remove already committed rows for another
   index.

@@ -9,7 +9,7 @@ The MVP intentionally avoids Tushare and starts with free data sources only.
 
 | Market | Primary Source | Use | Notes |
 | --- | --- | --- | --- |
-| China A | AKShare Legulegu index valuation, AKShare CSI valuation fallback | PE, PB, close, recent CSI dividend yield fallback | Legulegu PE/PB history is required for 5-year percentile analysis; CSI indicator files are recent-window only and must not be treated as complete history. |
+| China A | AKShare Legulegu index valuation | PE, PB, close | Legulegu PE/PB history is required for 5-year percentile analysis; CSI indicator files are recent-window only and must not feed DCA signals. |
 | Hong Kong | AKShare/Yahoo Finance derived data | price history, current fundamentals where available | Historical PE/PB may require provider-specific adapters. |
 | United States | Shiller/DataHub/Yahoo-derived adapters | S&P 500 PE/CAPE, price history, ETF proxy fundamentals | Historical daily index PE is not consistently free. Use documented fallback hierarchy. |
 
@@ -87,7 +87,7 @@ AKShare Legulegu valuation rows should use:
 - `source_type = "native_index"`
 - `metric_schema_version = "legulegu_index_v1"`
 
-The AKShare CSI valuation file remains a fallback/recent data source:
+The AKShare CSI valuation file is recent-window diagnostic data only:
 
 ```python
 ak.stock_zh_index_value_csindex(symbol="000300")
@@ -95,9 +95,11 @@ ak.stock_zh_index_value_csindex(symbol="000905")
 ```
 
 The CSI `indicator.xls` file can return only a recent window, for example around
-20 trading days. It is not sufficient for 5-year percentile analysis by itself.
-Do not accept CSI-only recent rows as the preferred backfill result when
-Legulegu PE/PB history is available.
+20 trading days. It is not sufficient for 5-year percentile analysis by itself
+and must not be used as a successful fallback for CSI 300 or CSI 500 DCA
+signals. If Legulegu history is unavailable or does not cover the requested
+lookback start, the provider must fail the backfill for that index instead of
+persisting CSI-only short history.
 
 AKShare CSI native valuation rows should use:
 
@@ -178,11 +180,12 @@ Backfill behavior:
 9. Record source coverage gaps and provider failures in
    `data_quality_events`.
 
-If a provider only supplies recent valuation data, store all available history
-and mark the remaining window as missing. For China A-share MVP indices, the
-provider must first attempt the Legulegu PE/PB history source so the normal
-backfill path covers the configured 5-year lookback. The signal engine must
-require a minimum observation count before generating strong signals.
+If a non-China provider only supplies recent valuation data, store all available
+history and mark the remaining window as missing. For China A-share MVP indices,
+recent-only valuation data is not acceptable for DCA analysis. The provider must
+use Legulegu PE/PB history to cover the configured 5-year lookback or fail the
+index backfill. The signal engine must also require a minimum observation count
+before generating strong signals.
 
 Backfill should not calculate signals, send Telegram notifications, or apply
 market-window scheduling logic. Those responsibilities belong to later runtime
