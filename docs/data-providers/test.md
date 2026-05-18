@@ -23,6 +23,9 @@
 - Repeated backfill does not duplicate `index_valuations` rows.
 - Repeated backfill skips provider calls when SQLite already covers the
   requested lookback window.
+- Backfill requests only the missing tail when the lookback start is cached but
+  the end date is missing.
+- Backfill refetches the full window when the lookback start is missing.
 - `--refresh` bypasses the SQLite coverage cache.
 - Coverage gaps are recorded in `data_quality_events`.
 - Provider failures are recorded in `data_quality_events` when appropriate.

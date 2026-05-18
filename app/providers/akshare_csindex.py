@@ -23,6 +23,7 @@ LEGULEGU_SYMBOLS = {
     "000300": "沪深300",
     "000905": "中证500",
 }
+MAX_NON_TRADING_GAP_DAYS = 7
 
 
 class AkshareCsindexProvider:
@@ -201,7 +202,9 @@ def _load_akshare() -> Any:
 def _has_requested_coverage(result: ProviderResult, start_date: str) -> bool:
     if not result.valuations:
         return False
-    return min(valuation.trade_date for valuation in result.valuations) <= start_date
+    earliest = min(date.fromisoformat(valuation.trade_date) for valuation in result.valuations)
+    requested_start = date.fromisoformat(start_date)
+    return 0 <= (earliest - requested_start).days <= MAX_NON_TRADING_GAP_DAYS or earliest <= requested_start
 
 
 def _insufficient_history_error(

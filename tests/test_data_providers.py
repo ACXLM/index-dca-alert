@@ -302,6 +302,98 @@ def test_backfill_refresh_bypasses_cached_window(tmp_path: Path) -> None:
     ]
 
 
+def test_backfill_fetches_only_missing_tail_when_start_is_cached(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+    config = _app_config(indices=[_index("000300")])
+    provider = _FixtureProvider(
+        ProviderResult(
+            valuations=[
+                ProviderValuation(
+                    trade_date="2026-05-16",
+                    pe=12.0,
+                    pb=1.2,
+                    source=SOURCE,
+                    source_type=SOURCE_TYPE,
+                    metric_schema_version=METRIC_SCHEMA_VERSION,
+                    raw_json={"fixture": True},
+                )
+            ],
+            issues=[],
+        )
+    )
+
+    run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": _FixtureProvider(_provider_result_many(["2025-05-15", "2026-05-15"]))},
+        years=1,
+        today=date(2026, 5, 15),
+    )
+    result = run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": provider},
+        years=1,
+        today=date(2026, 5, 16),
+    )
+
+    with connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS count, MAX(trade_date) AS last_date FROM index_valuations"
+        ).fetchone()
+
+    assert provider.calls == [("000300", "2026-05-16", "2026-05-16")]
+    assert result.inserted_or_updated_rows == 1
+    assert row["count"] == 3
+    assert row["last_date"] == "2026-05-16"
+
+
+def test_backfill_treats_nearby_first_trading_day_as_start_coverage(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+    config = _app_config(indices=[_index("000300")])
+    provider = _FixtureProvider(_provider_result("2026-05-18"))
+
+    run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": _FixtureProvider(_provider_result_many(["2025-05-19", "2026-05-17"]))},
+        years=1,
+        today=date(2026, 5, 17),
+    )
+    run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": provider},
+        years=1,
+        today=date(2026, 5, 18),
+    )
+
+    assert provider.calls == [("000300", "2026-05-18", "2026-05-18")]
+
+
+def test_backfill_refetches_full_window_when_start_is_not_cached(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+    config = _app_config(indices=[_index("000300")])
+    provider = _FixtureProvider(_provider_result_many(["2025-05-15", "2026-05-16"]))
+
+    run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": _FixtureProvider(_provider_result("2026-05-15"))},
+        years=1,
+        today=date(2026, 5, 15),
+    )
+    run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": provider},
+        years=1,
+        today=date(2026, 5, 16),
+    )
+
+    assert provider.calls == [("000300", "2025-05-16", "2026-05-16")]
+
+
 def test_backfill_records_coverage_gaps(tmp_path: Path) -> None:
     db_path = tmp_path / "index_dca.sqlite"
     config = _app_config(indices=[_index("000300")])

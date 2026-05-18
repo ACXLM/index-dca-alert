@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Sequence
 
@@ -17,6 +17,9 @@ from app.repositories.sqlite import (
     connect,
     initialize_database,
 )
+
+
+MAX_NON_TRADING_GAP_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -79,10 +82,18 @@ def run_backfill(
             if index_row is None:
                 raise RuntimeError(f"seeded index not found: {index.code}")
             index_id = str(index_row["id"])
-            if not refresh and valuation_repo.has_coverage(index_id, start_date, end_date):
+            fetch_window = _resolve_fetch_window(
+                valuation_repo=valuation_repo,
+                index_id=index_id,
+                start_date=start_date,
+                end_date=end_date,
+                refresh=refresh,
+            )
+            if fetch_window is None:
                 processed_indices += 1
                 skipped_indices += 1
                 continue
+            fetch_start_date, fetch_end_date = fetch_window
 
             provider = provider_registry.get(index.primary_provider)
             if provider is None:
@@ -97,7 +108,7 @@ def run_backfill(
                 continue
 
             try:
-                result = provider.fetch_history(index, start_date, end_date)
+                result = provider.fetch_history(index, fetch_start_date, fetch_end_date)
             except ProviderError as exc:
                 event_count += _record_event(
                     event_repo,
@@ -113,19 +124,19 @@ def run_backfill(
                 index_id=index_id,
                 index=index,
                 result=result,
-                start_date=start_date,
+                start_date=fetch_start_date,
                 valuation_repo=valuation_repo,
                 event_repo=event_repo,
             )
             event_count += len(result.issues)
-            if _has_coverage_gap(result, start_date):
+            if _has_coverage_gap(result, fetch_start_date):
                 event_count += _record_event(
                     event_repo,
                     index_id,
                     source=_result_source(result, index.primary_provider),
                     event_type="coverage_gap",
-                    message=f"provider history starts after requested start date {start_date}",
-                    trade_date=start_date,
+                    message=f"provider history starts after requested start date {fetch_start_date}",
+                    trade_date=fetch_start_date,
                 )
             processed_indices += 1
 
@@ -159,6 +170,37 @@ def _select_indices(
     if index_code is not None:
         selected = [index for index in selected if index.code == index_code]
     return selected
+
+
+def _resolve_fetch_window(
+    *,
+    valuation_repo: ValuationRepository,
+    index_id: str,
+    start_date: str,
+    end_date: str,
+    refresh: bool,
+) -> tuple[str, str] | None:
+    if refresh:
+        return start_date, end_date
+
+    coverage = valuation_repo.coverage_for_index(index_id)
+    if coverage.count == 0 or coverage.first_date is None or coverage.last_date is None:
+        return start_date, end_date
+    if not _start_is_covered(coverage.first_date, start_date):
+        return start_date, end_date
+    if coverage.last_date >= end_date:
+        return None
+
+    fetch_start = date.fromisoformat(coverage.last_date) + timedelta(days=1)
+    if fetch_start > date.fromisoformat(end_date):
+        return None
+    return fetch_start.isoformat(), end_date
+
+
+def _start_is_covered(first_date: str, requested_start_date: str) -> bool:
+    first = date.fromisoformat(first_date)
+    requested = date.fromisoformat(requested_start_date)
+    return first <= requested or (first - requested).days <= MAX_NON_TRADING_GAP_DAYS
 
 
 def _persist_provider_result(

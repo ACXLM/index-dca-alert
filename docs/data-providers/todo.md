@@ -16,6 +16,8 @@
   `--years`, and `--db-path`.
 - [x] Skip provider calls when SQLite already covers the requested lookback
   window.
+- [x] Fetch only the missing tail when SQLite already has the lookback start.
+- [x] Refetch the full window when SQLite is missing the lookback start.
 - [x] Add `--refresh` to explicitly bypass the local coverage cache.
 - [ ] Implement Hong Kong provider adapter.
 - [ ] Define exact HSI and HSTECH ticker/fallback symbols.

@@ -81,6 +81,13 @@ class UserSubscriptionInput:
     enabled: bool = True
 
 
+@dataclass(frozen=True)
+class ValuationCoverage:
+    count: int
+    first_date: str | None
+    last_date: str | None
+
+
 class IndexRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
@@ -271,6 +278,12 @@ class ValuationRepository:
         ).fetchone()
 
     def has_coverage(self, index_id: str, start_date: str, end_date: str) -> bool:
+        coverage = self.coverage_for_index(index_id)
+        if coverage.count == 0 or coverage.first_date is None or coverage.last_date is None:
+            return False
+        return coverage.first_date <= start_date and coverage.last_date >= end_date
+
+    def coverage_for_index(self, index_id: str) -> ValuationCoverage:
         row = self.conn.execute(
             """
             SELECT
@@ -279,14 +292,16 @@ class ValuationRepository:
               MAX(trade_date) AS last_date
             FROM index_valuations
             WHERE index_id = ?
-              AND trade_date >= ?
-              AND trade_date <= ?
             """,
-            (index_id, start_date, end_date),
+            (index_id,),
         ).fetchone()
-        if row is None or int(row["count"]) == 0:
-            return False
-        return str(row["first_date"]) <= start_date and str(row["last_date"]) >= end_date
+        if row is None:
+            return ValuationCoverage(count=0, first_date=None, last_date=None)
+        return ValuationCoverage(
+            count=int(row["count"]),
+            first_date=str(row["first_date"]) if row["first_date"] is not None else None,
+            last_date=str(row["last_date"]) if row["last_date"] is not None else None,
+        )
 
 
 class MarketRunRepository:

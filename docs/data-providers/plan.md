@@ -175,20 +175,24 @@ Backfill behavior:
 3. Seed configured indices and DCA rules.
 4. Read enabled indices from `config/indices.yml`, applying CLI filters.
 5. Resolve the provider from each index's `primary_provider`.
-6. Before calling the provider, check whether SQLite already has valuation rows
-   covering the requested lookback start through the requested end date.
-7. Skip provider calls for cached indices unless `--refresh` is set.
-8. For uncached indices, call the provider's historical endpoint where
-   available.
-9. Normalize fields into canonical valuation rows.
-10. Upsert rows into `index_valuations`.
-11. Record source coverage gaps and provider failures in
-   `data_quality_events`.
+6. Before calling the provider, check SQLite coverage for each index.
+7. Skip provider calls for fully cached indices unless `--refresh` is set.
+8. If the lookback start is covered but the requested end date is missing, call
+   the provider only for the missing tail from `last_date + 1` through the
+   requested end date.
+9. If the lookback start is not covered, call the provider for the full
+   requested window to repair history.
+10. Normalize fields into canonical valuation rows.
+11. Upsert rows into `index_valuations`.
+12. Record source coverage gaps and provider failures in
+    `data_quality_events`.
 
 Backfill is intentionally cache-aware. Re-running the same 5-year backfill on
 the same day should not re-fetch the provider if the database already covers
-the requested window. A new trade date can still require provider access because
-the MVP has not introduced provider-specific latest-row endpoints yet.
+the requested window. A new trade date should request only the missing tail. For
+providers whose upstream API only exposes full-history responses, the adapter may
+still download a full response internally, but it must receive and persist only
+the requested incremental date window.
 
 If a non-China provider only supplies recent valuation data, store all available
 history and mark the remaining window as missing. For China A-share MVP indices,
