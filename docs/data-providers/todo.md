@@ -14,6 +14,9 @@
 - [x] Resolve providers from `primary_provider` in `config/indices.yml`.
 - [x] Implement backfill CLI filters for `--market`, `--index-code`,
   `--years`, and `--db-path`.
+- [x] Skip provider calls when SQLite already covers the requested lookback
+  window.
+- [x] Add `--refresh` to explicitly bypass the local coverage cache.
 - [ ] Implement Hong Kong provider adapter.
 - [ ] Define exact HSI and HSTECH ticker/fallback symbols.
 - [ ] Implement US provider adapters for SPX and NDX.

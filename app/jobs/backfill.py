@@ -24,6 +24,7 @@ class BackfillResult:
     processed_indices: int
     inserted_or_updated_rows: int
     data_quality_events: int
+    skipped_indices: int = 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -33,6 +34,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         years=args.years,
         market=args.market,
         index_code=args.index_code,
+        refresh=args.refresh,
     )
     return 0
 
@@ -46,6 +48,7 @@ def run_backfill(
     providers: dict[str, HistoricalValuationProvider] | None = None,
     app_config: AppConfig | None = None,
     today: date | None = None,
+    refresh: bool = False,
 ) -> BackfillResult:
     config = app_config or load_app_config()
     lookback_years = years or config.rules.lookback_years
@@ -60,6 +63,7 @@ def run_backfill(
     processed_indices = 0
     valuation_count = 0
     event_count = 0
+    skipped_indices = 0
 
     with connect(db_path) as conn:
         index_repo = IndexRepository(conn)
@@ -75,6 +79,11 @@ def run_backfill(
             if index_row is None:
                 raise RuntimeError(f"seeded index not found: {index.code}")
             index_id = str(index_row["id"])
+            if not refresh and valuation_repo.has_coverage(index_id, start_date, end_date):
+                processed_indices += 1
+                skipped_indices += 1
+                continue
+
             provider = provider_registry.get(index.primary_provider)
             if provider is None:
                 event_count += _record_event(
@@ -124,6 +133,7 @@ def run_backfill(
         processed_indices=processed_indices,
         inserted_or_updated_rows=valuation_count,
         data_quality_events=event_count,
+        skipped_indices=skipped_indices,
     )
 
 
@@ -133,6 +143,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--market", choices=["CN", "HK", "US"], default=None)
     parser.add_argument("--index-code", default=None)
     parser.add_argument("--db-path", default="data/index_dca.sqlite")
+    parser.add_argument("--refresh", action="store_true")
     return parser.parse_args(argv)
 
 

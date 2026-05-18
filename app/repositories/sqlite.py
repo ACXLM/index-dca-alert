@@ -270,6 +270,24 @@ class ValuationRepository:
             (index_id, trade_date),
         ).fetchone()
 
+    def has_coverage(self, index_id: str, start_date: str, end_date: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT
+              COUNT(*) AS count,
+              MIN(trade_date) AS first_date,
+              MAX(trade_date) AS last_date
+            FROM index_valuations
+            WHERE index_id = ?
+              AND trade_date >= ?
+              AND trade_date <= ?
+            """,
+            (index_id, start_date, end_date),
+        ).fetchone()
+        if row is None or int(row["count"]) == 0:
+            return False
+        return str(row["first_date"]) <= start_date and str(row["last_date"]) >= end_date
+
 
 class MarketRunRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:

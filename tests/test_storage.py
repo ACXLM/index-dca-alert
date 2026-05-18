@@ -151,6 +151,27 @@ def test_valuation_upsert_is_idempotent(tmp_path: Path) -> None:
         assert row["pe"] == 12.0
 
 
+def test_valuation_coverage_requires_start_and_end_dates(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+    index_id = _seed_one_index(db_path)
+
+    with connect(db_path) as conn:
+        repo = ValuationRepository(conn)
+        for trade_date in ["2021-05-17", "2026-05-17"]:
+            repo.upsert(
+                ValuationInput(
+                    index_id=index_id,
+                    trade_date=trade_date,
+                    source="akshare_legulegu_index",
+                    pe=10.0,
+                )
+            )
+
+        assert repo.has_coverage(index_id, "2021-05-17", "2026-05-17") is True
+        assert repo.has_coverage(index_id, "2021-05-16", "2026-05-17") is False
+        assert repo.has_coverage(index_id, "2021-05-17", "2026-05-18") is False
+
+
 def test_signal_upsert_writes_one_signal_per_subscription_and_trade_date(tmp_path: Path) -> None:
     db_path = tmp_path / "index_dca.sqlite"
     index_id = _seed_one_index(db_path)

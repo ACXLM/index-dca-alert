@@ -166,6 +166,7 @@ CLI options:
 - `--market CN|HK|US`: optional market filter
 - `--index-code CODE`: optional single-index filter
 - `--db-path PATH`: optional database path for local runs and tests
+- `--refresh`: bypass local SQLite coverage cache and re-fetch provider data
 
 Backfill behavior:
 
@@ -174,11 +175,20 @@ Backfill behavior:
 3. Seed configured indices and DCA rules.
 4. Read enabled indices from `config/indices.yml`, applying CLI filters.
 5. Resolve the provider from each index's `primary_provider`.
-6. For each index, call the provider's historical endpoint where available.
-7. Normalize fields into canonical valuation rows.
-8. Upsert rows into `index_valuations`.
-9. Record source coverage gaps and provider failures in
+6. Before calling the provider, check whether SQLite already has valuation rows
+   covering the requested lookback start through the requested end date.
+7. Skip provider calls for cached indices unless `--refresh` is set.
+8. For uncached indices, call the provider's historical endpoint where
+   available.
+9. Normalize fields into canonical valuation rows.
+10. Upsert rows into `index_valuations`.
+11. Record source coverage gaps and provider failures in
    `data_quality_events`.
+
+Backfill is intentionally cache-aware. Re-running the same 5-year backfill on
+the same day should not re-fetch the provider if the database already covers
+the requested window. A new trade date can still require provider access because
+the MVP has not introduced provider-specific latest-row endpoints yet.
 
 If a non-China provider only supplies recent valuation data, store all available
 history and mark the remaining window as missing. For China A-share MVP indices,

@@ -21,6 +21,9 @@
 
 - Backfill is idempotent for repeated runs.
 - Repeated backfill does not duplicate `index_valuations` rows.
+- Repeated backfill skips provider calls when SQLite already covers the
+  requested lookback window.
+- `--refresh` bypasses the SQLite coverage cache.
 - Coverage gaps are recorded in `data_quality_events`.
 - Provider failures are recorded in `data_quality_events` when appropriate.
 - Invalid rows are skipped and recorded in `data_quality_events`.

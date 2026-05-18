@@ -249,6 +249,59 @@ def test_backfill_is_idempotent_and_preserves_source_metadata(tmp_path: Path) ->
     assert rows[0]["metric_schema_version"] == METRIC_SCHEMA_VERSION
 
 
+def test_backfill_skips_provider_when_requested_window_is_cached(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+    config = _app_config(indices=[_index("000300")])
+    provider = _FixtureProvider(_provider_result_many(["2025-05-15", "2026-05-15"]))
+
+    first = run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": provider},
+        years=1,
+        today=date(2026, 5, 15),
+    )
+    second = run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": provider},
+        years=1,
+        today=date(2026, 5, 15),
+    )
+
+    assert first.skipped_indices == 0
+    assert second.skipped_indices == 1
+    assert provider.calls == [("000300", "2025-05-15", "2026-05-15")]
+
+
+def test_backfill_refresh_bypasses_cached_window(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+    config = _app_config(indices=[_index("000300")])
+    provider = _FixtureProvider(_provider_result_many(["2025-05-15", "2026-05-15"]))
+
+    run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": provider},
+        years=1,
+        today=date(2026, 5, 15),
+    )
+    result = run_backfill(
+        db_path=db_path,
+        app_config=config,
+        providers={"akshare_csindex": provider},
+        years=1,
+        today=date(2026, 5, 15),
+        refresh=True,
+    )
+
+    assert result.skipped_indices == 0
+    assert provider.calls == [
+        ("000300", "2025-05-15", "2026-05-15"),
+        ("000300", "2025-05-15", "2026-05-15"),
+    ]
+
+
 def test_backfill_records_coverage_gaps(tmp_path: Path) -> None:
     db_path = tmp_path / "index_dca.sqlite"
     config = _app_config(indices=[_index("000300")])
@@ -492,6 +545,10 @@ class _MixedProvider:
 
 
 def _provider_result(trade_date: str) -> ProviderResult:
+    return _provider_result_many([trade_date])
+
+
+def _provider_result_many(trade_dates: list[str]) -> ProviderResult:
     return ProviderResult(
         valuations=[
             ProviderValuation(
@@ -503,6 +560,7 @@ def _provider_result(trade_date: str) -> ProviderResult:
                 metric_schema_version=METRIC_SCHEMA_VERSION,
                 raw_json={"fixture": True},
             )
+            for trade_date in trade_dates
         ],
         issues=[],
     )
