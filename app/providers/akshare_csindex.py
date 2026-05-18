@@ -15,8 +15,14 @@ from app.providers.base import (
 
 
 SOURCE = "akshare_csindex"
+LEGULEGU_SOURCE = "akshare_legulegu_index"
 SOURCE_TYPE = "native_index"
 METRIC_SCHEMA_VERSION = "csindex_v1"
+LEGULEGU_METRIC_SCHEMA_VERSION = "legulegu_index_v1"
+LEGULEGU_SYMBOLS = {
+    "000300": "沪深300",
+    "000905": "中证500",
+}
 
 
 class AkshareCsindexProvider:
@@ -29,16 +35,57 @@ class AkshareCsindexProvider:
         start_date: str,
         end_date: str,
     ) -> ProviderResult:
-        rows = self._fetch_rows(index)
-        return normalize_akshare_csindex_rows(rows, start_date=start_date, end_date=end_date)
-
-    def _fetch_rows(self, index: IndexConfig) -> Iterable[dict[str, Any]]:
+        client = self.client or _load_akshare()
+        csindex_result: ProviderResult | None = None
+        csindex_error: ProviderError | None = None
         try:
-            client = self.client or _load_akshare()
+            csindex_result = normalize_akshare_csindex_rows(
+                self._fetch_rows(index, client),
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except ProviderError as exc:
+            csindex_error = exc
+
+        if index.code in LEGULEGU_SYMBOLS:
+            try:
+                legulegu_result = self._fetch_legulegu_history(index, client, start_date, end_date)
+            except ProviderError as exc:
+                if csindex_result is not None:
+                    return _with_issue(csindex_result, exc)
+                raise csindex_error or exc from exc
+            if _has_requested_coverage(legulegu_result, start_date):
+                return legulegu_result
+            if csindex_result is None:
+                return legulegu_result
+
+        if csindex_result is not None:
+            return csindex_result
+        if csindex_error is not None:
+            raise csindex_error
+        raise ProviderError(SOURCE, index.source_symbol, "provider returned no result")
+
+    def _fetch_rows(self, index: IndexConfig, client: Any) -> Iterable[dict[str, Any]]:
+        try:
             data = client.stock_zh_index_value_csindex(symbol=index.source_symbol)
         except Exception as exc:  # noqa: BLE001 - provider adapters wrap third-party failures.
             raise ProviderError(SOURCE, index.source_symbol, str(exc)) from exc
         return _iter_records(data)
+
+    def _fetch_legulegu_history(
+        self,
+        index: IndexConfig,
+        client: Any,
+        start_date: str,
+        end_date: str,
+    ) -> ProviderResult:
+        symbol = LEGULEGU_SYMBOLS[index.code]
+        try:
+            pe_rows = _iter_records(client.stock_index_pe_lg(symbol=symbol))
+            pb_rows = _iter_records(client.stock_index_pb_lg(symbol=symbol))
+        except Exception as exc:  # noqa: BLE001 - provider adapters wrap third-party failures.
+            raise ProviderError(LEGULEGU_SOURCE, symbol, str(exc)) from exc
+        return normalize_legulegu_index_rows(pe_rows, pb_rows, start_date=start_date, end_date=end_date)
 
 
 def normalize_akshare_csindex_rows(
@@ -75,6 +122,54 @@ def normalize_akshare_csindex_rows(
             ProviderRowIssue(
                 event_type="empty_response",
                 message="provider returned no rows",
+            )
+        )
+
+    return ProviderResult(valuations=valuations, issues=issues)
+
+
+def normalize_legulegu_index_rows(
+    pe_rows: Iterable[dict[str, Any]],
+    pb_rows: Iterable[dict[str, Any]],
+    *,
+    start_date: str,
+    end_date: str,
+) -> ProviderResult:
+    pe_by_date = {_date: row for row in pe_rows if (_date := _date_value(row, ["日期", "date"])) is not None}
+    pb_by_date = {_date: row for row in pb_rows if (_date := _date_value(row, ["日期", "date"])) is not None}
+    trade_dates = sorted(set(pe_by_date) | set(pb_by_date))
+
+    valuations: list[ProviderValuation] = []
+    issues: list[ProviderRowIssue] = []
+    for trade_date in trade_dates:
+        if not start_date <= trade_date <= end_date:
+            continue
+        pe_row = pe_by_date.get(trade_date, {})
+        pb_row = pb_by_date.get(trade_date, {})
+        valuation = ProviderValuation(
+            trade_date=trade_date,
+            pe=_float_value(pe_row, ["滚动市盈率", "ttmPe", "市盈率", "pe"]),
+            pb=_float_value(pb_row, ["市净率", "pb", "PB"]),
+            close=_float_value(pe_row, ["指数", "close", "收盘"]),
+            source=LEGULEGU_SOURCE,
+            source_type=SOURCE_TYPE,
+            metric_schema_version=LEGULEGU_METRIC_SCHEMA_VERSION,
+            raw_json={
+                "pe": _json_safe_raw_row(pe_row),
+                "pb": _json_safe_raw_row(pb_row),
+            },
+        )
+        issue = validate_provider_valuation(valuation)
+        if issue is not None:
+            issues.append(issue)
+            continue
+        valuations.append(valuation)
+
+    if not valuations and not issues:
+        issues.append(
+            ProviderRowIssue(
+                event_type="empty_response",
+                message="legulegu provider returned no rows",
             )
         )
 
@@ -118,6 +213,25 @@ def _load_akshare() -> Any:
     except ImportError as exc:
         raise ProviderError(SOURCE, "akshare", "akshare is not installed") from exc
     return ak
+
+
+def _has_requested_coverage(result: ProviderResult, start_date: str) -> bool:
+    if not result.valuations:
+        return False
+    return min(valuation.trade_date for valuation in result.valuations) <= start_date
+
+
+def _with_issue(result: ProviderResult, error: ProviderError) -> ProviderResult:
+    return ProviderResult(
+        valuations=result.valuations,
+        issues=[
+            *result.issues,
+            ProviderRowIssue(
+                event_type="provider_failure",
+                message=str(error),
+            ),
+        ],
+    )
 
 
 def _date_value(raw_row: dict[str, Any], aliases: list[str]) -> str | None:

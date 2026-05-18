@@ -4,7 +4,10 @@
 - [x] Define provider interfaces and canonical `ProviderValuation` output.
 - [x] Define `ProviderError` for source and normalization failures.
 - [x] Implement AKShare provider for CSI 300 and CSI 500.
+- [x] Prefer AKShare Legulegu PE/PB history for China 5-year backfill.
+- [x] Keep AKShare CSI valuation files as recent-window fallback data.
 - [x] Normalize AKShare CSI fixture rows into canonical valuation fields.
+- [x] Normalize AKShare Legulegu PE/PB rows into canonical valuation fields.
 - [x] Validate provider rows and skip invalid rows without producing
   valid-looking valuations.
 - [x] Resolve providers from `primary_provider` in `config/indices.yml`.

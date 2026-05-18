@@ -9,7 +9,7 @@ The MVP intentionally avoids Tushare and starts with free data sources only.
 
 | Market | Primary Source | Use | Notes |
 | --- | --- | --- | --- |
-| China A | AKShare CSI valuation | PE, PB, dividend yield | CSI valuation endpoint is the cleanest free MVP source for China indices. |
+| China A | AKShare Legulegu index valuation, AKShare CSI valuation fallback | PE, PB, close, recent CSI dividend yield fallback | Legulegu PE/PB history is required for 5-year percentile analysis; CSI indicator files are recent-window only and must not be treated as complete history. |
 | Hong Kong | AKShare/Yahoo Finance derived data | price history, current fundamentals where available | Historical PE/PB may require provider-specific adapters. |
 | United States | Shiller/DataHub/Yahoo-derived adapters | S&P 500 PE/CAPE, price history, ETF proxy fundamentals | Historical daily index PE is not consistently free. Use documented fallback hierarchy. |
 
@@ -23,7 +23,7 @@ Implement the provider workstream in narrow slices.
 The first implementation slice should include:
 
 - provider interfaces and canonical valuation objects
-- AKShare CSI provider for CSI 300 and CSI 500
+- AKShare China index provider for CSI 300 and CSI 500
 - `app.jobs.backfill`
 - fixture-based tests for provider normalization and backfill idempotency
 
@@ -70,15 +70,34 @@ Provider normalization rules:
 
 ### CSI 300 and CSI 500
 
-Use AKShare CSI valuation:
+Use AKShare Legulegu valuation history for the 5-year analysis window:
+
+```python
+ak.stock_index_pe_lg(symbol="沪深300")
+ak.stock_index_pb_lg(symbol="沪深300")
+ak.stock_index_pe_lg(symbol="中证500")
+ak.stock_index_pb_lg(symbol="中证500")
+```
+
+Persist PE, PB, and close when available.
+
+AKShare Legulegu valuation rows should use:
+
+- `source = "akshare_legulegu_index"`
+- `source_type = "native_index"`
+- `metric_schema_version = "legulegu_index_v1"`
+
+The AKShare CSI valuation file remains a fallback/recent data source:
 
 ```python
 ak.stock_zh_index_value_csindex(symbol="000300")
 ak.stock_zh_index_value_csindex(symbol="000905")
 ```
 
-Persist PE, PB, dividend yield, close when available, and always store
-`metric_schema_version`.
+The CSI `indicator.xls` file can return only a recent window, for example around
+20 trading days. It is not sufficient for 5-year percentile analysis by itself.
+Do not accept CSI-only recent rows as the preferred backfill result when
+Legulegu PE/PB history is available.
 
 AKShare CSI native valuation rows should use:
 
@@ -160,8 +179,10 @@ Backfill behavior:
    `data_quality_events`.
 
 If a provider only supplies recent valuation data, store all available history
-and mark the remaining window as missing. The signal engine must require a
-minimum observation count before generating strong signals.
+and mark the remaining window as missing. For China A-share MVP indices, the
+provider must first attempt the Legulegu PE/PB history source so the normal
+backfill path covers the configured 5-year lookback. The signal engine must
+require a minimum observation count before generating strong signals.
 
 Backfill should not calculate signals, send Telegram notifications, or apply
 market-window scheduling logic. Those responsibilities belong to later runtime

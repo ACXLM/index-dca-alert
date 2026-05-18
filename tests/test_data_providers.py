@@ -9,10 +9,13 @@ import pytest
 from app.config import AppConfig, IndexConfig, RulesConfig, ZoneRule
 from app.jobs.backfill import run_backfill
 from app.providers.akshare_csindex import (
+    LEGULEGU_METRIC_SCHEMA_VERSION,
+    LEGULEGU_SOURCE,
     METRIC_SCHEMA_VERSION,
     SOURCE,
     SOURCE_TYPE,
     AkshareCsindexProvider,
+    normalize_legulegu_index_rows,
     normalize_akshare_csindex_rows,
 )
 from app.providers.base import ProviderError, ProviderResult, ProviderRowIssue, ProviderValuation
@@ -72,6 +75,64 @@ def test_akshare_raw_json_is_safe_when_trade_date_is_date_object(tmp_path: Path)
 
     assert row["trade_date"] == "2026-05-15"
     assert '"日期": "2026-05-15"' in row["raw_json"]
+
+
+def test_legulegu_normalization_merges_pe_pb_for_5_year_history() -> None:
+    result = normalize_legulegu_index_rows(
+        pe_rows=[
+            {"日期": "2021-05-17", "滚动市盈率": 14.2, "指数": 5100},
+            {"日期": "2026-05-15", "滚动市盈率": 12.5, "指数": 3900},
+        ],
+        pb_rows=[
+            {"日期": "2021-05-17", "市净率": 1.5},
+            {"日期": "2026-05-15", "市净率": 1.3},
+        ],
+        start_date="2021-05-17",
+        end_date="2026-05-17",
+    )
+
+    assert len(result.valuations) == 2
+    assert result.valuations[0].trade_date == "2021-05-17"
+    assert result.valuations[0].pe == 14.2
+    assert result.valuations[0].pb == 1.5
+    assert result.valuations[0].close == 5100
+    assert result.valuations[0].source == LEGULEGU_SOURCE
+    assert result.valuations[0].source_type == SOURCE_TYPE
+    assert result.valuations[0].metric_schema_version == LEGULEGU_METRIC_SCHEMA_VERSION
+
+
+def test_akshare_provider_prefers_legulegu_when_csindex_is_recent_only() -> None:
+    provider = AkshareCsindexProvider(client=_AkshareClientWithLegulegu())
+
+    result = provider.fetch_history(_index("000300"), "2021-05-17", "2026-05-17")
+
+    assert len(result.valuations) == 2
+    assert result.valuations[0].trade_date == "2021-05-17"
+    assert {valuation.source for valuation in result.valuations} == {LEGULEGU_SOURCE}
+
+
+def test_backfill_writes_5_year_legulegu_history_when_csindex_is_recent_only(tmp_path: Path) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+
+    run_backfill(
+        db_path=db_path,
+        app_config=_app_config(indices=[_index("000300")]),
+        providers={"akshare_csindex": AkshareCsindexProvider(client=_AkshareClientWithLegulegu())},
+        years=5,
+        today=date(2026, 5, 17),
+    )
+
+    with connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS count, MIN(trade_date) AS first_date, MAX(trade_date) AS last_date
+            FROM index_valuations
+            """
+        ).fetchone()
+
+    assert row["count"] == 2
+    assert row["first_date"] == "2021-05-17"
+    assert row["last_date"] == "2026-05-15"
 
 
 def test_missing_optional_fields_are_none_not_zero() -> None:
@@ -341,6 +402,29 @@ class _AkshareClient:
 
     def stock_zh_index_value_csindex(self, symbol: str) -> list[dict]:
         return self.rows
+
+
+class _AkshareClientWithLegulegu:
+    def stock_zh_index_value_csindex(self, symbol: str) -> list[dict]:
+        return [
+            {
+                "日期": date(2026, 5, 15),
+                "市盈率": "12.5",
+                "市净率": "1.4",
+            }
+        ]
+
+    def stock_index_pe_lg(self, symbol: str) -> list[dict]:
+        return [
+            {"日期": date(2021, 5, 17), "滚动市盈率": 15.0, "指数": 5000},
+            {"日期": date(2026, 5, 15), "滚动市盈率": 12.5, "指数": 3900},
+        ]
+
+    def stock_index_pb_lg(self, symbol: str) -> list[dict]:
+        return [
+            {"日期": date(2021, 5, 17), "市净率": 1.5},
+            {"日期": date(2026, 5, 15), "市净率": 1.3},
+        ]
 
 
 class _FailingProvider:

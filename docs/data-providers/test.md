@@ -5,6 +5,9 @@
 - Provider normalization maps local fixture fields into canonical valuation
   fields.
 - AKShare CSI rows preserve metric schema interpretation.
+- AKShare Legulegu PE/PB rows merge into canonical 5-year valuation rows.
+- China index provider prefers Legulegu PE/PB history when CSI valuation files
+  only contain recent-window rows.
 - ETF proxy rows preserve `source_type = etf_proxy`.
 - Missing optional fields are represented as missing data, not zero values.
 - Invalid rows with missing `trade_date` or no positive metric/close are not
@@ -25,6 +28,8 @@
   valuations.
 - Backfill applies `--market`, `--index-code`, `--years`, and `--db-path`
   arguments deterministically.
+- Backfill writes the configured 5-year China index history from Legulegu even
+  when CSI valuation files only contain recent-window rows.
 - Backfill does not call signal calculation or notification code.
 - One index provider failure does not remove already committed rows for another
   index.
