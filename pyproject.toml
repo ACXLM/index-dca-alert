@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "akshare>=1.18.60",
+  "python-dotenv>=1.2.2",
   "pyyaml>=6.0.0",
 ]
 
