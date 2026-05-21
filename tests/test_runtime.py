@@ -181,6 +181,37 @@ def test_daily_run_bootstraps_telegram_subscription_and_records_notification(tmp
     assert channel.contexts[0].index_name == "沪深300"
 
 
+def test_daily_run_loads_dotenv_for_local_telegram_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "index_dca.sqlite"
+    env_path = tmp_path / ".env"
+    env_path.write_text("TG_BOT_TOKEN=token-from-dotenv\nTG_CHAT_ID=chat-from-dotenv\n", encoding="utf-8")
+    channel = _FakeChannel("telegram")
+    monkeypatch.delenv("TG_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
+
+    result = run_daily(
+        db_path=db_path,
+        market="CN",
+        trade_date="2026-05-18",
+        app_config=_app_config([_index("000300", name="沪深300")]),
+        providers={"akshare_csindex": _HistoryProvider("2026-05-18")},
+        notification_channels=[channel],
+        env_path=env_path,
+        now=datetime(2026, 5, 18, 8, 31, tzinfo=UTC),
+    )
+
+    with connect(db_path) as conn:
+        notification = conn.execute("SELECT * FROM notifications").fetchone()
+        subscription = conn.execute("SELECT * FROM user_subscriptions").fetchone()
+
+    assert result.notifications_sent == 1
+    assert subscription["notify_target"] == "chat-from-dotenv"
+    assert notification["status"] == "sent"
+
+
 def test_dry_run_does_not_record_notification_attempts(tmp_path: Path) -> None:
     db_path = tmp_path / "index_dca.sqlite"
     channel = _FakeChannel("telegram")

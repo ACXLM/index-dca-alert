@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Sequence, TextIO
 from zoneinfo import ZoneInfo
 
-from app.config import AppConfig, IndexConfig, load_app_config
+from dotenv import load_dotenv
+
+from app.config import AppConfig, IndexConfig, PROJECT_ROOT, load_app_config
 from app.jobs.backfill import run_backfill
 from app.providers.base import HistoricalValuationProvider
 from app.repositories.sqlite import (
@@ -83,6 +85,7 @@ def run_daily(
     app_config: AppConfig | None = None,
     notification_channels: list[NotificationChannel] | None = None,
     env: dict[str, str] | None = None,
+    env_path: str | Path | None = None,
     now: datetime | None = None,
     stdout: TextIO | None = None,
 ) -> DailyRunResult:
@@ -139,7 +142,7 @@ def run_daily(
             providers=providers,
             app_config=app_config,
             notification_channels=notification_channels,
-            env=env if env is not None else os.environ,
+            env=env if env is not None else _load_runtime_env(env_path),
             dry_run=dry_run,
             stdout=stdout,
         )
@@ -353,6 +356,11 @@ def _notification_dispatcher(
         )
     except NotificationError:
         return None
+
+
+def _load_runtime_env(env_path: str | Path | None) -> dict[str, str]:
+    load_dotenv(dotenv_path=env_path or PROJECT_ROOT / ".env", override=False)
+    return os.environ
 
 
 def _signal_input(
