@@ -7,9 +7,9 @@ The MVP is designed to run on GitHub Actions, store historical valuation data in
 SQLite, calculate 5-year valuation percentiles, and send Telegram Bot
 notifications when configured rules produce a DCA signal.
 
-> Status: MVP design and scaffolding are in progress. The repository currently
-> contains schema, configuration, documentation, templates, and an initial
-> workflow shape. Runtime Python jobs are still being implemented.
+> Status: MVP is runnable locally for the China A-share release path. The
+> release gate currently covers CSI 300 (`000300`) and CSI 500 (`000905`) with
+> native AKShare Legulegu PE/PB valuation history.
 
 ## Why This Exists
 
@@ -22,9 +22,10 @@ Signals are reminders generated from rules, not personalized investment advice.
 
 ## MVP Scope
 
-- Six broad-market indices:
+- MVP release gate:
   - CSI 300
   - CSI 500
+- Roadmap indices configured for later provider work:
   - Hang Seng Index
   - Hang Seng TECH Index
   - S&P 500
@@ -33,7 +34,7 @@ Signals are reminders generated from rules, not personalized investment advice.
 - Fixed MVP base amount: `1000`.
 - SQLite persistence in `data/index_dca.sqlite`.
 - GitHub Actions scheduling after market close.
-- Telegram Bot notification channel.
+- Telegram Bot notification channel when configured.
 - Free data-source strategy only.
 
 Out of scope for the MVP:
@@ -43,6 +44,7 @@ Out of scope for the MVP:
 - Paid data providers.
 - Multi-user subscription management beyond the initial configured flow.
 - PostgreSQL or hosted service deployment.
+- HK/US provider release gates.
 
 ## How It Works
 
@@ -160,17 +162,38 @@ In GitHub Actions, configure these as repository secrets:
 - `TG_BOT_TOKEN`
 - `TG_CHAT_ID`
 
-## Planned Commands
+## Local MVP Run
 
-The MVP command surface is planned as:
+Use a throwaway local database for release smoke tests:
 
 ```bash
-uv run python -m app.jobs.backfill --years 5
-uv run python -m app.jobs.daily_run
+export DB=data/local_mvp_release.sqlite
 ```
 
-These commands are not available until the Python package structure and runtime
-jobs are implemented.
+Backfill the CN release-gate indices with five years of native valuation
+history:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m app.jobs.backfill \
+  --market CN \
+  --years 5 \
+  --db-path "$DB"
+```
+
+Run the daily runtime path locally:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m app.jobs.daily_run \
+  --market CN \
+  --run-type manual \
+  --force \
+  --db-path "$DB"
+```
+
+For the full release smoke checklist, including SQL checks for persisted
+history, PE/PB values, manual percentile verification, idempotency, and
+Telegram notification status, follow
+[docs/mvp-release/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/test.md).
 
 ## GitHub Actions
 
@@ -178,8 +201,9 @@ The initial workflow is in
 [.github/workflows/index-dca-alert.yml](/home/ac/Project/PythonWorksPaces/index-dca-alert/.github/workflows/index-dca-alert.yml).
 
 The target schedule runs after China/Hong Kong and US market close windows, with
-fallback runs for delayed provider availability. The workflow currently reflects
-the intended shape and still needs to be finalized for `uv`.
+fallback runs for delayed provider availability. The current release gate is the
+CN path; HK/US configured indices remain roadmap items until their providers are
+implemented.
 
 ## Testing
 
