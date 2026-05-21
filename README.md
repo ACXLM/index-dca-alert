@@ -205,6 +205,54 @@ fallback runs for delayed provider availability. The current release gate is the
 CN path; HK/US configured indices remain roadmap items until their providers are
 implemented.
 
+### Deployment Verification
+
+Before the first scheduled run, configure repository secrets under
+`Settings -> Secrets and variables -> Actions`:
+
+- `TG_BOT_TOKEN`
+- `TG_CHAT_ID`
+
+Then enable repository write permissions for workflow commits:
+
+```text
+Settings -> Actions -> General -> Workflow permissions -> Read and write permissions
+```
+
+Manually run the workflow from:
+
+```text
+Actions -> index-dca-alert -> Run workflow
+```
+
+The first run should complete the `daily` job and print either a successful
+runtime result or an idempotent skip:
+
+```text
+success: CN <date> processed=2 signals=2 notifications_sent=<count>
+skipped: CN <date> already succeeded
+```
+
+Validate these outcomes:
+
+- Telegram receives the CN signal messages when secrets are configured.
+- The SQLite commit step either pushes `chore: update valuation data` or prints
+  `No data changes`.
+- Running the workflow a second time for the same market date should skip
+  duplicate processing and avoid duplicate notifications.
+- No `.env`, tokens, chat IDs, or private values appear in commits or logs.
+
+Common failure checks:
+
+- `Unauthorized` or `chat not found`: verify the bot token, chat ID, and bot
+  permissions.
+- `Permission denied to github-actions[bot]`: verify workflow write
+  permissions.
+- `NameResolutionError` or provider timeout: retry after the data source is
+  reachable.
+- `uv sync --frozen` failure: regenerate and commit `uv.lock` from a clean local
+  sync.
+
 ## Testing
 
 Tests are documented next to each feature:
