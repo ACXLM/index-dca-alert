@@ -108,20 +108,26 @@ docs/
   storage/                SQLite schema and persistence rules.
   data-providers/         Provider assumptions and backfill design.
   valuation-signals/      Percentile and DCA signal rules.
-  notifications/          Telegram notification design.
+  notifications/          Versioned Telegram notification design.
   mvp-release/            Release checklist and smoke test.
 
 templates/
   telegram_signal.md      Telegram message template.
 ```
 
-Each feature documentation directory contains:
+Each feature documentation directory contains a feature README and versioned
+planning files:
 
 ```text
-plan.md
-test.md
-todo.md
+README.md
+mvp/
+  plan.md
+  test.md
+  todo.md
 ```
+
+Later iterations should add sibling version directories such as `v2/` instead
+of mixing new plans into completed MVP docs.
 
 Start with [docs/README.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/README.md)
 for the documentation map.
@@ -193,7 +199,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python -m app.jobs.daily_run \
 For the full release smoke checklist, including SQL checks for persisted
 history, PE/PB values, manual percentile verification, idempotency, and
 Telegram notification status, follow
-[docs/mvp-release/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/test.md).
+[docs/mvp-release/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/mvp/test.md).
 
 ## GitHub Actions
 
@@ -257,13 +263,13 @@ Common failure checks:
 
 Tests are documented next to each feature:
 
-- [docs/runtime/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/runtime/test.md)
-- [docs/app-foundation/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/app-foundation/test.md)
-- [docs/storage/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/storage/test.md)
-- [docs/data-providers/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/data-providers/test.md)
-- [docs/valuation-signals/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/valuation-signals/test.md)
-- [docs/notifications/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/notifications/test.md)
-- [docs/mvp-release/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/test.md)
+- [docs/runtime/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/runtime/mvp/test.md)
+- [docs/app-foundation/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/app-foundation/mvp/test.md)
+- [docs/storage/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/storage/mvp/test.md)
+- [docs/data-providers/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/data-providers/mvp/test.md)
+- [docs/valuation-signals/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/valuation-signals/mvp/test.md)
+- [docs/notifications/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/notifications/mvp/test.md)
+- [docs/mvp-release/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/mvp/test.md)
 
 Normal tests should use local fixtures and avoid live provider or Telegram API
 calls. Live checks should be manual or explicitly marked.
@@ -278,9 +284,9 @@ calls. Live checks should be manual or explicitly marked.
 
 ## Development Guidelines
 
-- Follow the feature TODO lists under `docs/<feature>/todo.md`.
-- Keep feature plans, tests, and TODOs in the same feature documentation
-  directory.
+- Follow the feature TODO lists under `docs/<feature>/<version>/todo.md`.
+- Keep feature plans, tests, and TODOs in the same versioned feature
+  documentation directory.
 - Use lightweight DDD driven by real business concepts, not directory templates.
 - Prefer interface boundaries for providers, repositories, scoring services, and
   notification channels.
