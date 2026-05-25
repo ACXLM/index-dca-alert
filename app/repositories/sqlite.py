@@ -381,6 +381,87 @@ class MarketRunRepository:
         return row is not None
 
 
+
+class UserRepository:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def get_or_create(self, name: str):
+        now = utc_now_iso()
+        with self.conn:
+            # Check first to avoid overwriting updated_at or creating conflict
+            row = self.get_by_name(name)
+            if row:
+                return row
+            user_id = str(uuid.uuid4())
+            self.conn.execute(
+                "INSERT INTO users (id, name, enabled, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
+                (user_id, name, now, now)
+            )
+            return self.get_by_id(user_id)
+
+    def get_by_name(self, name: str):
+        return self.conn.execute("SELECT * FROM users WHERE name = ?", (name,)).fetchone()
+
+    def get_by_id(self, user_id: str):
+        return self.conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+class UserIndexSubscriptionRepository:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def get_or_create(self, user_id: str, index_id: str, base_amount: float):
+        now = utc_now_iso()
+        with self.conn:
+            row = self.get_by_identity(user_id, index_id)
+            if row:
+                return row
+            sub_id = str(uuid.uuid4())
+            self.conn.execute(
+                "INSERT INTO user_index_subscriptions (id, user_id, index_id, base_amount, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+                (sub_id, user_id, index_id, base_amount, now, now)
+            )
+            return self.get_by_identity(user_id, index_id)
+
+    def get_by_identity(self, user_id: str, index_id: str):
+        return self.conn.execute("SELECT * FROM user_index_subscriptions WHERE user_id = ? AND index_id = ?", (user_id, index_id)).fetchone()
+
+    def list_enabled_for_index(self, index_id: str):
+        return list(self.conn.execute("SELECT * FROM user_index_subscriptions WHERE index_id = ? AND enabled = 1", (index_id,)))
+
+
+class UserNotificationEndpointRepository:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def create(self, user_id: str, channel_type: str, target: str, credential_enc: str) -> str:
+        now = utc_now_iso()
+        endpoint_id = str(uuid.uuid4())
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO user_notification_endpoints (id, user_id, channel_type, target, credential_enc, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+                (endpoint_id, user_id, channel_type, target, credential_enc, now, now)
+            )
+        return endpoint_id
+
+    def get_by_identity(self, user_id: str, channel_type: str, target: str):
+        return self.conn.execute("SELECT * FROM user_notification_endpoints WHERE user_id = ? AND channel_type = ? AND target = ?", (user_id, channel_type, target)).fetchone()
+
+    def list_enabled_for_index_and_channel(self, index_id: str, channel_type: str):
+        query = '''
+        SELECT e.*
+        FROM user_notification_endpoints e
+        JOIN users u ON u.id = e.user_id
+        JOIN user_index_subscriptions s ON s.user_id = e.user_id
+        WHERE s.index_id = ?
+          AND s.enabled = 1
+          AND e.channel_type = ?
+          AND e.enabled = 1
+          AND u.enabled = 1
+        '''
+        return list(self.conn.execute(query, (index_id, channel_type)))
+
 class UserSubscriptionRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
@@ -558,6 +639,7 @@ class NotificationRepository:
         target: str,
         status: str,
         *,
+        endpoint_id: str,
         error_message: str | None = None,
         sent_at: str | None = None,
     ) -> str:
@@ -567,14 +649,15 @@ class NotificationRepository:
             self.conn.execute(
                 """
                 INSERT INTO notifications (
-                  id, signal_id, channel, target, status,
+                  id, signal_id, endpoint_id, channel, target, status,
                   error_message, sent_at, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     notification_id,
                     signal_id,
+                    endpoint_id,
                     channel,
                     target,
                     status,
@@ -584,6 +667,13 @@ class NotificationRepository:
                 ),
             )
         return notification_id
+
+    def already_sent(self, signal_id: str, endpoint_id: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM notifications WHERE signal_id = ? AND endpoint_id = ? AND status = 'sent' LIMIT 1",
+            (signal_id, endpoint_id)
+        ).fetchone()
+        return row is not None
 
 
 class DataQualityEventRepository:
