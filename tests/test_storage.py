@@ -13,8 +13,8 @@ from app.repositories.sqlite import (
     MarketRunRepository,
     SignalInput,
     SignalRepository,
-    UserSubscriptionInput,
-    UserSubscriptionRepository,
+    UserIndexSubscriptionRepository,
+    UserRepository,
     ValuationInput,
     ValuationRepository,
     connect,
@@ -39,7 +39,9 @@ def test_sqlite_initializes_from_schema(tmp_path: Path) -> None:
         "indices",
         "index_valuations",
         "dca_rules",
-        "user_subscriptions",
+        "users",
+        "user_index_subscriptions",
+        "user_notification_endpoints",
         "valuation_signals",
         "notifications",
         "market_runs",
@@ -177,13 +179,11 @@ def test_signal_upsert_writes_one_signal_per_subscription_and_trade_date(tmp_pat
     index_id = _seed_one_index(db_path)
 
     with connect(db_path) as conn:
-        subscription_id = UserSubscriptionRepository(conn).create(
-            UserSubscriptionInput(
-                user_id="local",
-                index_id=index_id,
-                notify_target="telegram-chat",
-            )
+        user = UserRepository(conn).get_or_create("local")
+        subscription = UserIndexSubscriptionRepository(conn).get_or_create(
+            user["id"], index_id, 1000.0
         )
+        subscription_id = str(subscription["id"])
         repo = SignalRepository(conn)
         first_id = repo.upsert(
             _signal_input(subscription_id, index_id, "2026-05-17", suggested_amount=1000)
@@ -278,8 +278,10 @@ def test_natural_uniqueness_constraints_exist(tmp_path: Path) -> None:
 
     with connect(db_path) as conn:
         assert _has_unique_index(conn, "index_valuations", ["index_id", "trade_date", "source"])
-        assert _has_unique_index(conn, "valuation_signals", ["user_subscription_id", "trade_date"])
+        assert _has_unique_index(conn, "valuation_signals", ["user_index_subscription_id", "trade_date"])
         assert _has_unique_index(conn, "market_runs", ["market", "trade_date", "run_type"])
+        assert _has_unique_index(conn, "user_index_subscriptions", ["user_id", "index_id"])
+        assert _has_unique_index(conn, "user_notification_endpoints", ["user_id", "channel_type", "target"])
 
 
 def _seed_one_index(db_path: Path) -> str:
@@ -335,7 +337,7 @@ def _signal_input(
     suggested_amount: float,
 ) -> SignalInput:
     return SignalInput(
-        user_subscription_id=subscription_id,
+        user_index_subscription_id=subscription_id,
         index_id=index_id,
         trade_date=trade_date,
         signal_quality="complete",
@@ -352,7 +354,9 @@ def _application_tables() -> list[str]:
         "indices",
         "index_valuations",
         "dca_rules",
-        "user_subscriptions",
+        "users",
+        "user_index_subscriptions",
+        "user_notification_endpoints",
         "valuation_signals",
         "notifications",
         "market_runs",

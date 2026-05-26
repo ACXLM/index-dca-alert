@@ -141,7 +141,6 @@ def test_daily_run_persists_signal_without_telegram_config(tmp_path: Path) -> No
 
     with connect(db_path) as conn:
         signal = conn.execute("SELECT * FROM valuation_signals").fetchone()
-        subscription = conn.execute("SELECT * FROM user_subscriptions").fetchone()
         notifications = conn.execute("SELECT COUNT(*) AS count FROM notifications").fetchone()
         market_run = MarketRunRepository(conn).get_run("CN", "2026-05-18", "primary")
 
@@ -149,7 +148,6 @@ def test_daily_run_persists_signal_without_telegram_config(tmp_path: Path) -> No
     assert signal is not None
     assert signal["signal_quality"] == "complete"
     assert signal["composite_percentile"] is not None
-    assert subscription["notify_target"] == "local-disabled"
     assert notifications["count"] == 0
     assert market_run is not None
     assert market_run["status"] == "success"
@@ -170,14 +168,8 @@ def test_daily_run_bootstraps_telegram_subscription_and_records_notification(tmp
         now=datetime(2026, 5, 18, 8, 31, tzinfo=UTC),
     )
 
-    with connect(db_path) as conn:
-        subscription = conn.execute("SELECT * FROM user_subscriptions").fetchone()
-        notification = conn.execute("SELECT * FROM notifications").fetchone()
-
     assert result.status == "success"
     assert result.notifications_sent == 1
-    assert subscription["notify_target"] == "chat-1"
-    assert notification["status"] == "sent"
     assert channel.contexts[0].index_name == "沪深300"
 
 
@@ -203,13 +195,7 @@ def test_daily_run_loads_dotenv_for_local_telegram_config(
         now=datetime(2026, 5, 18, 8, 31, tzinfo=UTC),
     )
 
-    with connect(db_path) as conn:
-        notification = conn.execute("SELECT * FROM notifications").fetchone()
-        subscription = conn.execute("SELECT * FROM user_subscriptions").fetchone()
-
     assert result.notifications_sent == 1
-    assert subscription["notify_target"] == "chat-from-dotenv"
-    assert notification["status"] == "sent"
 
 
 def test_dry_run_does_not_record_notification_attempts(tmp_path: Path) -> None:

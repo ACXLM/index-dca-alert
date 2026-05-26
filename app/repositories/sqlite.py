@@ -54,7 +54,7 @@ class ValuationInput:
 
 @dataclass(frozen=True)
 class SignalInput:
-    user_subscription_id: str
+    user_index_subscription_id: str
     index_id: str
     trade_date: str
     signal_quality: str
@@ -571,14 +571,14 @@ class SignalRepository:
             self.conn.execute(
                 """
                 INSERT INTO valuation_signals (
-                  id, user_subscription_id, index_id, trade_date,
+                  id, user_index_subscription_id, index_id, trade_date,
                   pe_percentile, pb_percentile, cape_percentile,
                   dividend_yield_percentile, dividend_yield_inverse_percentile,
                   price_percentile, composite_percentile, signal_quality,
                   valuation_zone, dca_ratio, suggested_amount, message, created_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_subscription_id, trade_date) DO UPDATE SET
+                ON CONFLICT(user_index_subscription_id, trade_date) DO UPDATE SET
                   index_id = excluded.index_id,
                   pe_percentile = excluded.pe_percentile,
                   pb_percentile = excluded.pb_percentile,
@@ -595,7 +595,7 @@ class SignalRepository:
                 """,
                 (
                     str(uuid.uuid4()),
-                    signal.user_subscription_id,
+                    signal.user_index_subscription_id,
                     signal.index_id,
                     signal.trade_date,
                     signal.pe_percentile,
@@ -613,18 +613,18 @@ class SignalRepository:
                     now,
                 ),
             )
-        row = self.get_by_identity(signal.user_subscription_id, signal.trade_date)
+        row = self.get_by_identity(signal.user_index_subscription_id, signal.trade_date)
         if row is None:
             raise RuntimeError("signal upsert completed but row was not found")
         return str(row["id"])
 
-    def get_by_identity(self, user_subscription_id: str, trade_date: str) -> sqlite3.Row | None:
+    def get_by_identity(self, user_index_subscription_id: str, trade_date: str) -> sqlite3.Row | None:
         return self.conn.execute(
             """
             SELECT * FROM valuation_signals
-            WHERE user_subscription_id = ? AND trade_date = ?
+            WHERE user_index_subscription_id = ? AND trade_date = ?
             """,
-            (user_subscription_id, trade_date),
+            (user_index_subscription_id, trade_date),
         ).fetchone()
 
 

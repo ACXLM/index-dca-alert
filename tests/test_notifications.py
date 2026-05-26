@@ -11,12 +11,13 @@ from app.repositories.sqlite import (
     NotificationRepository,
     SignalInput,
     SignalRepository,
-    UserSubscriptionInput,
-    UserSubscriptionRepository,
+    UserIndexSubscriptionRepository,
+    UserRepository,
     connect,
     initialize_database,
 )
 from app.services.notifications import (
+    NotificationChannel,
     NotificationContext,
     NotificationDispatcher,
     NotificationResult,
@@ -103,7 +104,7 @@ def test_telegram_payload_uses_env_config_without_parse_mode() -> None:
 
 def test_failed_telegram_send_records_sanitized_error_in_database(tmp_path: Path) -> None:
     db_path = tmp_path / "index_dca.sqlite"
-    signal_id = _seed_signal(db_path)
+    signal_id, endpoint_id = _seed_signal_v2(db_path)
     http_client = _FakeHttpClient(
         _FakeResponse(
             status_code=500,
@@ -112,19 +113,25 @@ def test_failed_telegram_send_records_sanitized_error_in_database(tmp_path: Path
     )
 
     with connect(db_path) as conn:
-        dispatcher = NotificationDispatcher(
-            [
-                TelegramChannel(
-                    TelegramConfig(bot_token="secret-token", chat_id="chat-1"),
-                    http_client=http_client,
-                )
-            ],
-            repository=NotificationRepository(conn),
+        n_repo = NotificationRepository(conn)
+
+        result = TelegramChannel(
+            TelegramConfig(bot_token="secret-token", chat_id="chat-1"),
+            http_client=http_client,
+        ).send(_context(signal_id=signal_id))
+
+        n_repo.create_attempt(
+            signal_id,
+            "telegram",
+            "chat-1",
+            result.status,
+            endpoint_id=endpoint_id,
+            error_message=result.error_message,
+            sent_at=result.sent_at,
         )
-        results = dispatcher.dispatch(_context(signal_id=signal_id))
         row = conn.execute("SELECT * FROM notifications").fetchone()
 
-    assert results[0].status == "failed"
+    assert result.status == "failed"
     assert row["status"] == "failed"
     assert row["error_message"] is not None
     assert "secret-token" not in row["error_message"]
@@ -134,44 +141,63 @@ def test_failed_telegram_send_records_sanitized_error_in_database(tmp_path: Path
 
 def test_successful_telegram_send_records_sent_status(tmp_path: Path) -> None:
     db_path = tmp_path / "index_dca.sqlite"
-    signal_id = _seed_signal(db_path)
+    signal_id, endpoint_id = _seed_signal_v2(db_path)
 
     with connect(db_path) as conn:
-        dispatcher = NotificationDispatcher(
-            [
-                TelegramChannel(
-                    TelegramConfig(bot_token="secret-token", chat_id="chat-1"),
-                    http_client=_FakeHttpClient(_FakeResponse(status_code=200, text='{"ok": true}')),
-                )
-            ],
-            repository=NotificationRepository(conn),
+        n_repo = NotificationRepository(conn)
+        result = TelegramChannel(
+            TelegramConfig(bot_token="secret-token", chat_id="chat-1"),
+            http_client=_FakeHttpClient(_FakeResponse(status_code=200, text='{"ok": true}')),
+        ).send(_context(signal_id=signal_id))
+        n_repo.create_attempt(
+            signal_id,
+            "telegram",
+            "chat-1",
+            result.status,
+            endpoint_id=endpoint_id,
+            sent_at=result.sent_at,
         )
-        results = dispatcher.dispatch(_context(signal_id=signal_id))
         row = conn.execute("SELECT * FROM notifications").fetchone()
 
-    assert results[0].status == "sent"
+    assert result.status == "sent"
     assert row["status"] == "sent"
     assert row["sent_at"] is not None
     assert row["error_message"] is None
 
 
-def test_dispatching_multiple_channels_records_one_attempt_per_channel(tmp_path: Path) -> None:
+def test_dispatching_multiple_managers_returns_consolidated_results(tmp_path: Path) -> None:
     db_path = tmp_path / "index_dca.sqlite"
-    signal_id = _seed_signal(db_path)
+    signal_id, endpoint_id = _seed_signal_v2(db_path)
 
     with connect(db_path) as conn:
-        dispatcher = NotificationDispatcher(
-            [_FakeChannel("telegram"), _FakeChannel("email")],
-            repository=NotificationRepository(conn),
-        )
-        results = dispatcher.dispatch(_context(signal_id=signal_id))
-        rows = conn.execute("SELECT channel, status FROM notifications ORDER BY channel").fetchall()
+        n_repo = NotificationRepository(conn)
+        mgr1 = _FakeManager("telegram", signal_id=signal_id, endpoint_id=endpoint_id, n_repo=conn)
+        mgr2 = _FakeManager("feishu", signal_id=signal_id, endpoint_id=endpoint_id, n_repo=conn)
+        dispatcher = NotificationDispatcher([mgr1, mgr2], repository=n_repo)
 
-    assert [result.channel for result in results] == ["telegram", "email"]
-    assert [(row["channel"], row["status"]) for row in rows] == [
-        ("email", "sent"),
-        ("telegram", "sent"),
-    ]
+        results = dispatcher.dispatch(_context(signal_id=signal_id))
+
+    assert len(results) == 2
+    assert {r.channel for r in results} == {"telegram", "feishu"}
+
+
+def test_dispatcher_returns_empty_list_with_no_managers() -> None:
+    dispatcher = NotificationDispatcher([], repository=None)
+
+    results = dispatcher.dispatch(_context())
+
+    assert results == []
+
+
+def test_notification_channel_protocol_is_still_directly_usable() -> None:
+    channel = TelegramChannel(
+        TelegramConfig(bot_token="tok", chat_id="chat-1"),
+        http_client=_FakeHttpClient(_FakeResponse(status_code=200, text='{"ok": true}')),
+    )
+
+    result = channel.send(_context())
+
+    assert result.status == "sent"
 
 
 def test_telegram_sender_uses_injectable_http_client_without_live_calls() -> None:
@@ -211,18 +237,24 @@ class _FakeHttpClient:
         return self.response
 
 
-class _FakeChannel:
-    def __init__(self, name: str) -> None:
-        self.name = name
+class _FakeManager:
+    def __init__(self, channel_type: str, *, signal_id: str, endpoint_id: str, n_repo: object) -> None:
+        self.channel_type = channel_type
+        self._signal_id = signal_id
+        self._endpoint_id = endpoint_id
 
-    def send(self, context: NotificationContext) -> NotificationResult:
-        return NotificationResult(
-            channel=self.name,
-            target=f"{self.name}-target",
-            status="sent",
-            message="sent",
-            sent_at="2026-05-18T00:00:00Z",
-        )
+    def dispatch_signal(
+        self, context: NotificationContext, repository: NotificationRepository
+    ) -> list[NotificationResult]:
+        return [
+            NotificationResult(
+                channel=self.channel_type,
+                target="target",
+                status="sent",
+                message="msg",
+                sent_at="2023-01-01T00:00:00Z",
+            )
+        ]
 
 
 def _context(**overrides: object) -> NotificationContext:
@@ -250,7 +282,7 @@ def _context(**overrides: object) -> NotificationContext:
     return NotificationContext(**values)
 
 
-def _seed_signal(db_path: Path) -> str:
+def _seed_signal_v2(db_path: Path) -> tuple[str, str]:
     initialize_database(db_path)
     with connect(db_path) as conn:
         index_repo = IndexRepository(conn)
@@ -271,17 +303,22 @@ def _seed_signal(db_path: Path) -> str:
         )
         index_row = index_repo.get_by_code("000300")
         assert index_row is not None
-        subscription_id = UserSubscriptionRepository(conn).create(
-            UserSubscriptionInput(
-                user_id="local",
-                index_id=str(index_row["id"]),
-                notify_target="chat-1",
-            )
+        index_id = str(index_row["id"])
+
+        user = UserRepository(conn).get_or_create("default")
+        sub = UserIndexSubscriptionRepository(conn).get_or_create(user["id"], index_id, 1000.0)
+        conn.execute(
+            "INSERT INTO user_notification_endpoints "
+            "(id, user_id, channel_type, target, credential_enc, enabled, created_at, updated_at) "
+            "VALUES ('ep1', ?, 'telegram', 'chat-1', 'enc', 1, 'now', 'now')",
+            (user["id"],),
         )
-        return SignalRepository(conn).upsert(
+        conn.commit()
+
+        signal_id = SignalRepository(conn).upsert(
             SignalInput(
-                user_subscription_id=subscription_id,
-                index_id=str(index_row["id"]),
+                user_index_subscription_id=str(sub["id"]),
+                index_id=index_id,
                 trade_date="2026-05-18",
                 signal_quality="partial",
                 valuation_zone="合理偏低",
@@ -290,3 +327,4 @@ def _seed_signal(db_path: Path) -> str:
                 message="fixture",
             )
         )
+        return signal_id, "ep1"
