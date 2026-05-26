@@ -20,6 +20,12 @@ def run_migration(db_path: str, dry_run: bool = False):
     cursor.execute("SELECT * FROM user_subscriptions")
     old_subscriptions = cursor.fetchall()
     
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     fernet = load_fernet_from_env()
 
     if not dry_run:

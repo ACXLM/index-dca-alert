@@ -16,6 +16,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(FeishuRenderer().render(context))
         return 0
 
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     fernet = load_fernet_from_env()
     cred = decrypt_credential(fernet, args.credential_enc)
     config = FeishuConfig(webhook_token=cred["webhook_token"])
