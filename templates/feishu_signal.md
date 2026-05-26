@@ -18,7 +18,7 @@ CAPE百分位：{{ cape_percentile }}
 估值状态：{{ valuation_zone }}
 
 基准定投：{{ base_amount }}
-建议比例：{{ dca_ratio_percent }}
+建议比例：{{ dca_ratio_percent }}%
 建议金额：{{ suggested_amount }}
 
 说明：该提醒基于预设估值百分位规则生成，不构成个性化投资建议。
