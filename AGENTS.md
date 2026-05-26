@@ -216,3 +216,16 @@ chore: update GitHub Actions schedule
 
 Commit messages should describe the user-visible, domain, or operational change,
 not just the touched file.
+
+**Commit granularity rules** (agreed on 2026-05-26):
+
+- One commit per `todo.md` workstream item. Do not batch multiple items into a
+  single commit. This makes each step independently reviewable and revertable.
+- For TDD workstreams, combine tests and implementation in the same commit. A
+  failing test with no implementation has no standalone value to a reviewer.
+- When a schema or API change breaks existing tests in unrelated files, commit
+  those test fixes as a separate `fix:` or `test:` commit immediately after the
+  commit that introduced the breaking change. Label it clearly, for example:
+  `test: update storage and runtime tests for v2 schema`.
+- Never include documentation-only changes (`docs:`) in the same commit as code
+  changes. Keep them separate so `git log --oneline` stays scannable.
