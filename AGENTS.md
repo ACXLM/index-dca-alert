@@ -5,7 +5,7 @@
 ### Project Goal
 
 Build a minimal index valuation percentile and DCA reminder system that runs on
-GitHub Actions, stores valuation history in SQLite, and sends Telegram Bot
+GitHub Actions, stores valuation history in SQLite, and sends Telegram and Feishu Bot
 notifications.
 
 ### Core Business Logic
@@ -20,8 +20,8 @@ GitHub Actions schedule
   -> upsert SQLite valuation history
   -> calculate 5-year valuation percentiles
   -> generate DCA signal
-  -> render Telegram notification
-  -> send Telegram message
+  -> dispatch notifications (Telegram / Feishu)
+  -> record notification status
   -> commit SQLite state back to the repository
 ```
 
@@ -45,9 +45,10 @@ processed successfully, the next fallback run exits early.
 Runtime dependencies should stay intentionally small:
 
 - `akshare` for China index valuation data.
+- `cryptography` for secure notification credential encryption.
 - `pandas` for provider response normalization where useful.
 - `pyyaml` for configuration files.
-- `requests` for Telegram and simple HTTP adapters.
+- `requests` for Telegram/Feishu and simple HTTP adapters.
 - `yfinance` for Yahoo Finance price/fallback data.
 
 Do not add a web framework, ORM, task queue, or heavy application framework for
@@ -59,8 +60,8 @@ the MVP unless explicitly requested.
 - `data/index_dca.sqlite` is stateful MVP data and may be committed by GitHub
   Actions.
 - GitHub Actions is the scheduler and runtime.
-- Telegram Bot is the only MVP notification channel.
-- Secrets must live only in GitHub Actions secrets or local `.env`; never commit
+- Telegram and Feishu Bots are the notification channels.
+- Secrets and the master credential key (`APP_CREDENTIAL_KEY`) must live only in GitHub Actions secrets or local `.env`; never commit
   tokens or chat IDs.
 
 ## 3. Project Structure
@@ -185,7 +186,7 @@ complexity.
 - Use `docs/mvp-release/test.md` for cross-feature release checks.
 - Prefer deterministic unit tests with local fixtures. Avoid live provider calls
   in normal tests.
-- Live provider or Telegram checks should be manual or explicitly marked so they
+- Live provider or notification (Telegram/Feishu) checks should be manual or explicitly marked so they
   do not run by default in CI.
 
 ### Blacklist
