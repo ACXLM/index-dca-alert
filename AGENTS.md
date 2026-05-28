@@ -166,6 +166,11 @@ complexity.
 - Use natural uniqueness constraints such as
   `(index_id, trade_date, source)` and `(market, trade_date, run_type)` to make
   scheduled jobs safe to rerun.
+- Pre-ORM Database Migrations: In the MVP phase before introducing a formal ORM (like Alembic),
+  database migration scripts in `app/migrations/` MUST use the timestamp naming convention:
+  `YYYYMMDD_feature_name.[sql|py]`. This avoids sequence number conflicts in concurrent
+  development and ensures clear separation from future ORM auto-generated revisions (e.g., `0001_initial`),
+  making legacy migrations easier to archive.
 
 ### Comments and Documentation
 

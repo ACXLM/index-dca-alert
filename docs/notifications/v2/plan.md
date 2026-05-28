@@ -208,8 +208,8 @@ LIMIT 1
 ## 5. File Changes
 
 ### Added
-- `app/migrations/v2_schema.sql`: v2 schema definitions and DROP old tables.
-- `app/migrations/v2_migrate.py`: Migration script to move data to the new schema.
+- `app/migrations/m20260528_multi_channel_schema.sql`: v2 schema definitions and DROP old tables.
+- `app/migrations/m20260528_multi_channel_notifications.py`: Migration script to move data to the new schema.
 - `app/services/feishu_channel.py`: Contains `FeishuConfig`, `FeishuRenderer`, and `FeishuChannel`.
 - `app/services/channel_managers.py`: Defines `NotificationChannelManager` protocol, `TelegramManager`, and `FeishuManager`.
 - `app/services/credential.py`: Fernet wrapper containing `encrypt_credential()`, `decrypt_credential()`, and `load_fernet_from_env()`.

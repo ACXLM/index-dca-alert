@@ -21,7 +21,7 @@ Tests are organized by feature points, corresponding to the implementation order
 
 ### Unit Tests
 
-- `v2_schema.sql` can be executed entirely on an empty database without errors.
+- `m20260528_multi_channel_schema.sql` can be executed entirely on an empty database without errors.
 - After execution, `users`, `user_index_subscriptions`, `user_notification_endpoints`, `valuation_signals`, and `notifications` tables exist, and their fields and constraints match the DDL.
 - `valuation_signals.user_index_subscription_id` FK constraint is active: inserting a non-existent `user_index_subscription_id` throws a foreign key error.
 - `notifications.endpoint_id` FK constraint is active: inserting a non-existent `endpoint_id` throws a foreign key error.
@@ -31,7 +31,7 @@ Tests are organized by feature points, corresponding to the implementation order
 
 ### Integration Tests (Migration Script)
 
-- Executing `v2_migrate.py` on a database containing old `user_subscriptions` data results in:
+- Executing `m20260528_multi_channel_notifications.py` on a database containing old `user_subscriptions` data results in:
   - The `users` table containing a `default` user record.
   - The row count of `user_index_subscriptions` matching the number of distinct `(user_id, index_id)` pairs from the old `user_subscriptions` table.
   - The `credential_enc` in `user_notification_endpoints` can be decrypted to retrieve the original `bot_token`.

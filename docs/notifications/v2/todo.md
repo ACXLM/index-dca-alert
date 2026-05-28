@@ -21,19 +21,19 @@ Implement each feature independently and commit them sequentially in dependency 
 **commit:** `feat: migrate schema to v2 user, subscription, and endpoint tables`
 
 - [x] Create `app/migrations/` directory.
-- [x] Create `app/migrations/v2_schema.sql` containing the full v2 DDL:
+- [x] Create `app/migrations/m20260528_multi_channel_schema.sql` containing the full v2 DDL:
   - [x] `users` table (`id`, `name`, `enabled BOOLEAN`, `created_at`, `updated_at`).
   - [x] `user_index_subscriptions` table (`user_id`, `index_id`, `base_amount`, `enabled BOOLEAN`, `UNIQUE(user_id, index_id)`).
   - [x] `user_notification_endpoints` table (`user_id`, `channel_type`, `target`, `credential_enc`, `enabled BOOLEAN`, `UNIQUE(user_id, channel_type, target)`).
   - [x] Update `valuation_signals`: FK points to `user_index_subscription_id`, update `UNIQUE` constraint.
   - [x] Update `notifications`: Add `endpoint_id` column and FK.
   - [x] `DROP TABLE user_subscriptions`.
-- [x] Create `app/migrations/v2_migrate.py`:
+- [x] Create `app/migrations/m20260528_multi_channel_notifications.py`:
   - [x] Read data from the old `user_subscriptions` table.
   - [x] Create a `default` user record in the `users` table (idempotent; skip if exists).
   - [x] Write `(user_id, index_id, base_amount)` to `user_index_subscriptions`.
   - [x] Write `(notify_channel, notify_target)` to `user_notification_endpoints` with `credential_enc` generated using the injected Fernet instance.
-  - [x] Execute `v2_schema.sql` DDL.
+  - [x] Execute `m20260528_multi_channel_schema.sql` DDL.
   - [x] Support `--db-path` and `--dry-run` arguments.
 - [x] Update `app/schema.sql` to the full v2 version (to act as the entry point for initializing a new database).
 

@@ -30,10 +30,10 @@ def run_migration(db_path: str, dry_run: bool = False):
 
     if not dry_run:
         # Load v2 schema
-        schema_path = Path("app/migrations/v2_schema.sql")
+        schema_path = Path("app/migrations/m20260528_multi_channel_schema.sql")
         if not schema_path.exists():
             # fallback if running from tests etc
-            schema_path = Path(__file__).parent / "v2_schema.sql"
+            schema_path = Path(__file__).parent / "m20260528_multi_channel_schema.sql"
             
         cursor.executescript(schema_path.read_text(encoding="utf-8"))
 

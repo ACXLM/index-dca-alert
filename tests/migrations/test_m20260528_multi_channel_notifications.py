@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from cryptography.fernet import Fernet
 
-from app.migrations.v2_migrate import run_migration
+from app.migrations.m20260528_multi_channel_notifications import run_migration
 from app.services.credential import decrypt_credential, load_fernet_from_env
 
 
