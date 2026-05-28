@@ -3,7 +3,7 @@
 ## Documentation
 
 - [x] Add local MVP run instructions to `README.md`.
-- [x] Link `docs/mvp-release/test.md` from the documentation map.
+- [x] Link `docs/mvp-release/mvp/test.md` from the documentation map.
 - [x] Document that the release gate is CN only: `000300` and `000905`.
 - [x] Document that HK/US indices are configured roadmap items, not MVP
   release gates.

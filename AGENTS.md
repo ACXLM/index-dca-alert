@@ -5,7 +5,7 @@
 ### Project Goal
 
 Build a minimal index valuation percentile and DCA reminder system that runs on
-GitHub Actions, stores valuation history in SQLite, and sends Telegram Bot
+GitHub Actions, stores valuation history in SQLite, and sends Telegram and Feishu Bot
 notifications.
 
 ### Core Business Logic
@@ -20,8 +20,8 @@ GitHub Actions schedule
   -> upsert SQLite valuation history
   -> calculate 5-year valuation percentiles
   -> generate DCA signal
-  -> render Telegram notification
-  -> send Telegram message
+  -> dispatch notifications (Telegram / Feishu)
+  -> record notification status
   -> commit SQLite state back to the repository
 ```
 
@@ -45,9 +45,10 @@ processed successfully, the next fallback run exits early.
 Runtime dependencies should stay intentionally small:
 
 - `akshare` for China index valuation data.
+- `cryptography` for secure notification credential encryption.
 - `pandas` for provider response normalization where useful.
 - `pyyaml` for configuration files.
-- `requests` for Telegram and simple HTTP adapters.
+- `requests` for Telegram/Feishu and simple HTTP adapters.
 - `yfinance` for Yahoo Finance price/fallback data.
 
 Do not add a web framework, ORM, task queue, or heavy application framework for
@@ -59,8 +60,8 @@ the MVP unless explicitly requested.
 - `data/index_dca.sqlite` is stateful MVP data and may be committed by GitHub
   Actions.
 - GitHub Actions is the scheduler and runtime.
-- Telegram Bot is the only MVP notification channel.
-- Secrets must live only in GitHub Actions secrets or local `.env`; never commit
+- Telegram and Feishu Bots are the notification channels.
+- Secrets and the master credential key (`APP_CREDENTIAL_KEY`) must live only in GitHub Actions secrets or local `.env`; never commit
   tokens or chat IDs.
 
 ## 3. Project Structure
@@ -165,6 +166,11 @@ complexity.
 - Use natural uniqueness constraints such as
   `(index_id, trade_date, source)` and `(market, trade_date, run_type)` to make
   scheduled jobs safe to rerun.
+- Pre-ORM Database Migrations: In the MVP phase before introducing a formal ORM (like Alembic),
+  database migration scripts in `app/migrations/` MUST use the timestamp naming convention:
+  `YYYYMMDD_feature_name.[sql|py]`. This avoids sequence number conflicts in concurrent
+  development and ensures clear separation from future ORM auto-generated revisions (e.g., `0001_initial`),
+  making legacy migrations easier to archive.
 
 ### Comments and Documentation
 
@@ -185,7 +191,7 @@ complexity.
 - Use `docs/mvp-release/test.md` for cross-feature release checks.
 - Prefer deterministic unit tests with local fixtures. Avoid live provider calls
   in normal tests.
-- Live provider or Telegram checks should be manual or explicitly marked so they
+- Live provider or notification (Telegram/Feishu) checks should be manual or explicitly marked so they
   do not run by default in CI.
 
 ### Blacklist
@@ -216,3 +222,16 @@ chore: update GitHub Actions schedule
 
 Commit messages should describe the user-visible, domain, or operational change,
 not just the touched file.
+
+**Commit granularity rules** (agreed on 2026-05-26):
+
+- One commit per `todo.md` workstream item. Do not batch multiple items into a
+  single commit. This makes each step independently reviewable and revertable.
+- For TDD workstreams, combine tests and implementation in the same commit. A
+  failing test with no implementation has no standalone value to a reviewer.
+- When a schema or API change breaks existing tests in unrelated files, commit
+  those test fixes as a separate `fix:` or `test:` commit immediately after the
+  commit that introduced the breaking change. Label it clearly, for example:
+  `test: update storage and runtime tests for v2 schema`.
+- Never include documentation-only changes (`docs:`) in the same commit as code
+  changes. Keep them separate so `git log --oneline` stays scannable.

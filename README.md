@@ -4,7 +4,7 @@ Index DCA Alert is a minimal valuation-percentile and dollar-cost averaging
 reminder system for broad-market indices.
 
 The MVP is designed to run on GitHub Actions, store historical valuation data in
-SQLite, calculate 5-year valuation percentiles, and send Telegram Bot
+SQLite, calculate 5-year valuation percentiles, and send Telegram and Feishu Bot
 notifications when configured rules produce a DCA signal.
 
 > Status: MVP is runnable locally for the China A-share release path. The
@@ -34,7 +34,7 @@ Signals are reminders generated from rules, not personalized investment advice.
 - Fixed MVP base amount: `1000`.
 - SQLite persistence in `data/index_dca.sqlite`.
 - GitHub Actions scheduling after market close.
-- Telegram Bot notification channel when configured.
+- Telegram and Feishu Bot notification channels when configured.
 - Free data-source strategy only.
 
 Out of scope for the MVP:
@@ -42,7 +42,7 @@ Out of scope for the MVP:
 - Web UI.
 - SMS notifications.
 - Paid data providers.
-- Multi-user subscription management beyond the initial configured flow.
+- Web UI for multi-user subscription management (data layer is supported).
 - PostgreSQL or hosted service deployment.
 - HK/US provider release gates.
 
@@ -56,8 +56,8 @@ GitHub Actions schedule
   -> upsert SQLite valuation history
   -> calculate 5-year valuation percentiles
   -> generate DCA signal
-  -> render Telegram notification
-  -> send Telegram message
+  -> dispatch notifications (Telegram / Feishu)
+  -> record notification status
   -> commit SQLite state back to the repository
 ```
 
@@ -86,7 +86,7 @@ Scoring rules live in [config/rules.yml](/home/ac/Project/PythonWorksPaces/index
 - GitHub Actions for scheduling.
 - Telegram Bot API for notifications.
 - Runtime libraries planned for provider and HTTP work:
-  `akshare`, `pandas`, `pyyaml`, `requests`, and `yfinance`.
+  `akshare`, `cryptography`, `pandas`, `pyyaml`, `requests`, and `yfinance`.
 
 The project should migrate dependency configuration to `pyproject.toml` and
 `uv.lock`. Avoid adding new dependencies to `requirements.txt`.
@@ -108,20 +108,26 @@ docs/
   storage/                SQLite schema and persistence rules.
   data-providers/         Provider assumptions and backfill design.
   valuation-signals/      Percentile and DCA signal rules.
-  notifications/          Telegram notification design.
+  notifications/          Versioned Telegram notification design.
   mvp-release/            Release checklist and smoke test.
 
 templates/
   telegram_signal.md      Telegram message template.
 ```
 
-Each feature documentation directory contains:
+Each feature documentation directory contains a feature README and versioned
+planning files:
 
 ```text
-plan.md
-test.md
-todo.md
+README.md
+mvp/
+  plan.md
+  test.md
+  todo.md
 ```
+
+Later iterations should add sibling version directories such as `v2/` instead
+of mixing new plans into completed MVP docs.
 
 Start with [docs/README.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/README.md)
 for the documentation map.
@@ -150,15 +156,17 @@ UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests
 
 Local secrets should be placed in `.env`, which must not be committed.
 
-Required Telegram variables:
+Required secrets (in `.env` or GitHub Actions Secrets):
 
 ```text
+APP_CREDENTIAL_KEY=... (32-byte base64url encoded Fernet key)
 TG_BOT_TOKEN=...
 TG_CHAT_ID=...
 ```
 
 In GitHub Actions, configure these as repository secrets:
 
+- `APP_CREDENTIAL_KEY`
 - `TG_BOT_TOKEN`
 - `TG_CHAT_ID`
 
@@ -193,7 +201,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python -m app.jobs.daily_run \
 For the full release smoke checklist, including SQL checks for persisted
 history, PE/PB values, manual percentile verification, idempotency, and
 Telegram notification status, follow
-[docs/mvp-release/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/test.md).
+[docs/mvp-release/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/mvp/test.md).
 
 ## GitHub Actions
 
@@ -210,6 +218,7 @@ implemented.
 Before the first scheduled run, configure repository secrets under
 `Settings -> Secrets and variables -> Actions`:
 
+- `APP_CREDENTIAL_KEY`
 - `TG_BOT_TOKEN`
 - `TG_CHAT_ID`
 
@@ -235,7 +244,7 @@ skipped: CN <date> already succeeded
 
 Validate these outcomes:
 
-- Telegram receives the CN signal messages when secrets are configured.
+- Telegram/Feishu receives the CN signal messages when secrets are configured.
 - The SQLite commit step either pushes `chore: update valuation data` or prints
   `No data changes`.
 - Running the workflow a second time for the same market date should skip
@@ -257,13 +266,13 @@ Common failure checks:
 
 Tests are documented next to each feature:
 
-- [docs/runtime/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/runtime/test.md)
-- [docs/app-foundation/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/app-foundation/test.md)
-- [docs/storage/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/storage/test.md)
-- [docs/data-providers/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/data-providers/test.md)
-- [docs/valuation-signals/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/valuation-signals/test.md)
-- [docs/notifications/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/notifications/test.md)
-- [docs/mvp-release/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/test.md)
+- [docs/runtime/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/runtime/mvp/test.md)
+- [docs/app-foundation/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/app-foundation/mvp/test.md)
+- [docs/storage/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/storage/mvp/test.md)
+- [docs/data-providers/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/data-providers/mvp/test.md)
+- [docs/valuation-signals/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/valuation-signals/mvp/test.md)
+- [docs/notifications/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/notifications/mvp/test.md)
+- [docs/mvp-release/mvp/test.md](/home/ac/Project/PythonWorksPaces/index-dca-alert/docs/mvp-release/mvp/test.md)
 
 Normal tests should use local fixtures and avoid live provider or Telegram API
 calls. Live checks should be manual or explicitly marked.
@@ -278,9 +287,9 @@ calls. Live checks should be manual or explicitly marked.
 
 ## Development Guidelines
 
-- Follow the feature TODO lists under `docs/<feature>/todo.md`.
-- Keep feature plans, tests, and TODOs in the same feature documentation
-  directory.
+- Follow the feature TODO lists under `docs/<feature>/<version>/todo.md`.
+- Keep feature plans, tests, and TODOs in the same versioned feature
+  documentation directory.
 - Use lightweight DDD driven by real business concepts, not directory templates.
 - Prefer interface boundaries for providers, repositories, scoring services, and
   notification channels.

@@ -191,26 +191,20 @@ class TelegramChannel:
 class NotificationDispatcher:
     def __init__(
         self,
-        channels: list[NotificationChannel],
+        managers: list[Any],
         repository: NotificationRepository | None = None,
     ) -> None:
-        self.channels = channels
+        self.managers = managers
         self.repository = repository
 
     def dispatch(self, context: NotificationContext) -> list[NotificationResult]:
         results: list[NotificationResult] = []
-        for channel in self.channels:
-            result = channel.send(context)
-            results.append(result)
+        for manager in self.managers:
             if self.repository is not None:
-                self.repository.create_attempt(
-                    signal_id=context.signal_id,
-                    channel=result.channel,
-                    target=result.target,
-                    status=result.status,
-                    error_message=result.error_message,
-                    sent_at=result.sent_at,
-                )
+                results.extend(manager.dispatch_signal(context, self.repository))
+            else:
+                # Fallback if no repository provided, though shouldn't happen
+                results.extend(manager.dispatch_signal(context, None))
         return results
 
 

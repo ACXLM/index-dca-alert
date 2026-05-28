@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from pathlib import Path
-from typing import Sequence, TextIO
+from typing import Any, Sequence, TextIO
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -20,17 +20,21 @@ from app.repositories.sqlite import (
     NotificationRepository,
     SignalInput,
     SignalRepository,
-    UserSubscriptionRepository,
+    UserIndexSubscriptionRepository,
+    UserRepository,
     ValuationRepository,
     connect,
     initialize_database,
     utc_now_iso,
 )
+from app.services.channel_managers import FeishuManager, TelegramManager
+from app.services.credential import load_fernet_from_env
 from app.services.notifications import (
     NotificationChannel,
     NotificationContext,
     NotificationDispatcher,
     NotificationError,
+    NotificationResult,
     TelegramChannel,
     TelegramConfig,
 )
@@ -84,6 +88,7 @@ def run_daily(
     providers: dict[str, HistoricalValuationProvider] | None = None,
     app_config: AppConfig | None = None,
     notification_channels: list[NotificationChannel] | None = None,
+    notification_managers: list[Any] | None = None,
     env: dict[str, str] | None = None,
     env_path: str | Path | None = None,
     now: datetime | None = None,
@@ -142,6 +147,7 @@ def run_daily(
             providers=providers,
             app_config=app_config,
             notification_channels=notification_channels,
+            notification_managers=notification_managers,
             env=env if env is not None else _load_runtime_env(env_path),
             dry_run=dry_run,
             stdout=stdout,
@@ -187,6 +193,7 @@ def _run_market(
     providers: dict[str, HistoricalValuationProvider] | None,
     app_config: AppConfig | None,
     notification_channels: list[NotificationChannel] | None,
+    notification_managers: list[Any] | None,
     env: dict[str, str],
     dry_run: bool,
     stdout: TextIO | None,
@@ -212,15 +219,29 @@ def _run_market(
         index_repo = IndexRepository(conn)
         DcaRuleRepository(conn).seed(config.rules)
         valuation_repo = ValuationRepository(conn)
-        subscription_repo = UserSubscriptionRepository(conn)
+        user_repo = UserRepository(conn)
+        subscription_repo = UserIndexSubscriptionRepository(conn)
         signal_repo = SignalRepository(conn)
         notification_repo = NotificationRepository(conn)
+
+        if notification_managers is None and not dry_run:
+            try:
+                for k, v in env.items():
+                    os.environ[k] = v
+                fernet = load_fernet_from_env()
+                notification_managers = [TelegramManager(conn, fernet), FeishuManager(conn, fernet)]
+            except Exception as e:
+                _print(stdout, f"warning: failed to initialize v2 managers: {e}")
+
         dispatcher = _notification_dispatcher(
             channels=notification_channels,
+            managers=notification_managers,
             notification_repo=notification_repo,
             env=env,
             dry_run=dry_run,
         )
+
+        default_user = user_repo.get_or_create("default")
 
         for index in _select_market_indices(config.indices, market):
             processed_indices += 1
@@ -246,11 +267,10 @@ def _run_market(
             )
             usable_indices += 1
 
-            target = env.get("TG_CHAT_ID") or LOCAL_DISABLED_TARGET
-            subscription = subscription_repo.get_or_create_default(
-                index_id=index_id,
-                notify_target=target,
-                base_amount=config.rules.base_amount,
+            subscription = subscription_repo.get_or_create(
+                default_user["id"],
+                index_id,
+                config.rules.base_amount,
             )
             signal_id = signal_repo.upsert(
                 _signal_input(
@@ -262,7 +282,7 @@ def _run_market(
             )
             signals_written += 1
 
-            if dispatcher is not None and env.get("TG_CHAT_ID"):
+            if dispatcher is not None:
                 results = dispatcher.dispatch(
                     _notification_context(
                         signal_id=signal_id,
@@ -339,23 +359,35 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 def _notification_dispatcher(
     *,
     channels: list[NotificationChannel] | None,
+    managers: list[Any] | None,
     notification_repo: NotificationRepository,
     env: dict[str, str],
     dry_run: bool,
 ) -> NotificationDispatcher | None:
     if dry_run:
         return None
+    if managers is not None:
+        return NotificationDispatcher(managers, repository=notification_repo)
     if channels is not None:
-        return NotificationDispatcher(channels, repository=notification_repo)
-    if not env.get("TG_BOT_TOKEN") or not env.get("TG_CHAT_ID"):
-        return None
-    try:
         return NotificationDispatcher(
-            [TelegramChannel(TelegramConfig(bot_token=env["TG_BOT_TOKEN"], chat_id=env["TG_CHAT_ID"]))],
+            [_ChannelAsManager(ch) for ch in channels],
             repository=notification_repo,
         )
-    except NotificationError:
-        return None
+    return None
+
+
+class _ChannelAsManager:
+    def __init__(self, channel: NotificationChannel) -> None:
+        self._channel = channel
+        self.channel_type = channel.name
+
+    def dispatch_signal(
+        self,
+        context: NotificationContext,
+        repository: NotificationRepository,
+    ) -> list[NotificationResult]:
+        result = self._channel.send(context)
+        return [result]
 
 
 def _load_runtime_env(env_path: str | Path | None) -> dict[str, str]:
@@ -371,7 +403,7 @@ def _signal_input(
     base_amount: float,
 ) -> SignalInput:
     return SignalInput(
-        user_subscription_id=subscription_id,
+        user_index_subscription_id=subscription_id,
         index_id=index_id,
         trade_date=signal_result.trade_date,
         pe_percentile=signal_result.percentiles.pe,
