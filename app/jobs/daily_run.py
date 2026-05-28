@@ -27,6 +27,8 @@ from app.repositories.sqlite import (
     initialize_database,
     utc_now_iso,
 )
+from app.services.channel_managers import FeishuManager, TelegramManager
+from app.services.credential import load_fernet_from_env
 from app.services.notifications import (
     NotificationChannel,
     NotificationContext,
@@ -221,6 +223,16 @@ def _run_market(
         subscription_repo = UserIndexSubscriptionRepository(conn)
         signal_repo = SignalRepository(conn)
         notification_repo = NotificationRepository(conn)
+
+        if notification_managers is None and not dry_run:
+            try:
+                for k, v in env.items():
+                    os.environ[k] = v
+                fernet = load_fernet_from_env()
+                notification_managers = [TelegramManager(conn, fernet), FeishuManager(conn, fernet)]
+            except Exception as e:
+                _print(stdout, f"warning: failed to initialize v2 managers: {e}")
+
         dispatcher = _notification_dispatcher(
             channels=notification_channels,
             managers=notification_managers,
@@ -361,15 +373,7 @@ def _notification_dispatcher(
             [_ChannelAsManager(ch) for ch in channels],
             repository=notification_repo,
         )
-    if not env.get("TG_BOT_TOKEN") or not env.get("TG_CHAT_ID"):
-        return None
-    try:
-        return NotificationDispatcher(
-            [TelegramChannel(TelegramConfig(bot_token=env["TG_BOT_TOKEN"], chat_id=env["TG_CHAT_ID"]))],
-            repository=notification_repo,
-        )
-    except NotificationError:
-        return None
+    return None
 
 
 class _ChannelAsManager:
